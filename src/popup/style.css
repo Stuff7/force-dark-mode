@@ -1,0 +1,61 @@
+*, *::before, *::after {
+  font-family: Consolas, Arial, sans-serif;
+  box-sizing: border-box;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 300px;
+  height: max-content;
+  padding: 1rem;
+  background: #222;
+  color: #ccc;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: center;
+}
+
+input {
+  padding: 0.25rem;
+  width: 100%;
+  border-radius: 0.25rem;
+  outline: 0;
+  border: 0;
+}
+
+button {
+  font-size: 1rem;
+  font-weight: bold;
+  padding: 0.75rem 1.5rem;
+  width: 100%;
+  background: yellow;
+  color: #222;
+  outline: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #ccc;
+}
+
+button:active {
+  background: gold;
+}
+
+button::after {
+  content: "Save " attr(data-key-combination);
+}
+
+button[data-error] {
+  cursor: not-allowed;
+  background: lightsalmon;
+}
+
+button[data-error]::after {
+  content: attr(data-error);
+}

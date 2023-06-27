@@ -1,0 +1,46 @@
+{
+  "manifest_version": 2,
+  "name": "Force Dark Mode",
+  "version": "1.0",
+  "description": "Toggle dark mode on and off on any website by pressing a key shortcut.",
+  "permissions": [
+    "<all_urls>",
+    "activeTab",
+    "storage"
+  ],
+  "background": {
+    "scripts": ["src/background.js"],
+    "persistent": false
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/script.js"]
+    }
+  ],
+  "commands": {
+    "toggle-dark-mode": {
+      "suggested_key": {
+        "default": "Ctrl+Comma"
+      },
+      "description": "Toggle dark mode"
+    }
+  },
+  "browser_action": {
+    "default_icon": {
+      "16": "src/icons/icon16.png",
+      "32": "src/icons/icon32.png"
+    },
+    "default_title": "Force Dark Mode",
+    "default_popup": "src/popup/index.html"
+  },
+  "icons": {
+    "48": "src/icons/icon48.png",
+    "128": "src/icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "force-dark-mode@stuff7.github.io"
+    }
+  }
+}

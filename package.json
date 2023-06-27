@@ -1,0 +1,16 @@
+{
+  "name": "force-dark-mode",
+  "version": "1.0.0",
+  "description": "Toggle dark mode on and off on any website by pressing a key shortcut.",
+  "main": "src/script.js",
+  "author": "Armando",
+  "license": "MIT",
+  "scripts": {
+    "build": "web-ext build --artifacts-dir build --overwrite-dest --filename force-dark-mode.xpi"
+  },
+  "devDependencies": {
+    "@types/firefox-webext-browser": "^111.0.1",
+    "eslint": "^8.40.0",
+    "eslint-plugin-jsdoc": "^44.2.4"
+  }
+}
