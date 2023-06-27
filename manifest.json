@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Force Dark Mode",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Toggle dark mode on and off on any website by pressing a key shortcut.",
   "permissions": [
     "<all_urls>",
