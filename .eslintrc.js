@@ -31,12 +31,7 @@ module.exports = {
         tabWidth: 4,
       },
     ],
-    "no-console": [
-      "warn",
-      {
-        allow: ["warn", "error"],
-      },
-    ],
+    "no-console": "warn",
     "no-fallthrough": ["error", { commentPattern: "break[\\s\\w]*omitted" }],
     "no-param-reassign": [
       "error",

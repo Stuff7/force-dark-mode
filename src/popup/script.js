@@ -1,9 +1,28 @@
 const saveButton = getElementByIdOrThrow("saveButton");
+const extensionSwitch = getElementByIdOrThrow("extensionSwitch");
 const defaultCommand = "Ctrl+Comma";
 
-browser.storage.local.get("commandKey").then(({ commandKey }) => {
+if (!(extensionSwitch instanceof HTMLInputElement)) {
+  throw new Error("extensionSwitch is not an input.");
+}
+
+/** Sets extension status storage from popup checkbox.*/
+function updateExtensionStatus() {
+  browser.storage.local.set({ extensionStatus: this.checked }).catch((error) => {
+    saveButton.dataset.error = `Error saving extensionStatus status: ${error}`;
+  });
+}
+
+extensionSwitch.addEventListener("change", updateExtensionStatus);
+
+browser.storage.local.get(["commandKey", "extensionStatus"]).then(({ commandKey, extensionStatus }) => {
   if (commandKey) {
     setKeyCombination(commandKey);
+  }
+  if (typeof extensionStatus === "boolean") {
+    extensionSwitch.checked = extensionStatus;
+  } else {
+    updateExtensionStatus.call(extensionSwitch);
   }
 });
 
@@ -89,8 +108,9 @@ function getElementByIdOrThrow(id) {
  * @param {string} commandKey - The command key to be saved.
  */
 function saveCommandKey(commandKey) {
-  browser.storage.local.set({ commandKey })
-    .catch((error) => console.error("Error saving command key:", error));
+  browser.storage.local.set({ commandKey }).catch((error) => {
+    saveButton.dataset.error = `Error saving command key: ${error}`;
+  });
 }
 
 const KEYS = [

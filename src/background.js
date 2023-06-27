@@ -17,12 +17,18 @@ browser.storage.onChanged.addListener((changes) => {
 
 browser.commands.onCommand.addListener(async (command) => {
   if (command === "toggle-dark-mode") {
+    const { extensionStatus = true } = await browser.storage.local.get("extensionStatus");
+
+    if (!extensionStatus) {
+      return;
+    }
+
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
 
     if (!tab.id) {
-      console.error("Failed to get current tab id.");
-      return;
+      throw new Error("Failed to get current tab id.");
     }
+
     browser.tabs.sendMessage(tab.id, { action: "toggle-dark-mode" });
   }
 });
