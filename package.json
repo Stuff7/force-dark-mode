@@ -1,6 +1,6 @@
 {
   "name": "force-dark-mode",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Toggle dark mode on and off on any website by pressing a key shortcut.",
   "main": "src/script.js",
   "author": "Armando",
@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@types/firefox-webext-browser": "^111.0.1",
-    "eslint": "^8.40.0",
-    "eslint-plugin-jsdoc": "^44.2.4"
+    "eslint": "^8.46.0",
+    "eslint-plugin-jsdoc": "^44.2.7"
   }
 }
