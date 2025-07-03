@@ -1,34 +1,75 @@
-/**
- * Sets the command key in the extension's storage.
- * @param {string} commandKey - The command key to be set.
- */
-function setCommandKey(commandKey) {
-  browser.commands.update({
-    name: "toggle-dark-mode",
-    shortcut: commandKey,
+browser.storage.onChanged.addListener(async (changes, area) => {
+  if (area !== "local" || !changes.sites) return;
+
+  const sites = changes.sites.newValue || [];
+
+  const tab = (
+    await browser.tabs.query({ active: true, currentWindow: true })
+  )[0];
+
+  if (!tab.url || tab.id == null || !tab.url.startsWith("http")) return;
+
+  const site = getCurrentHost(tab.url);
+  const enabled = sites.includes(site);
+
+  browser.tabs.sendMessage(tab.id, {
+    action: "toggleDarkMode",
+    enabled,
+  });
+
+  updateBadge(tab.id, enabled);
+});
+
+browser.action.onClicked.addListener(async (tab) => {
+  if (!tab.url || tab.id == null) return;
+  const site = getCurrentHost(tab.url);
+  let sites = await getSites();
+
+  const enabled = sites.includes(site);
+  if (enabled) {
+    sites = sites.filter((s) => s !== site);
+  } else {
+    sites.push(site);
+  }
+
+  await browser.storage.local.set({ sites });
+});
+
+browser.tabs.onActivated.addListener(({ tabId }) => updateTabBadge(tabId));
+
+browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "complete") updateTabBadge(tabId);
+});
+
+/** @param {number} tabId */
+async function updateTabBadge(tabId) {
+  const tab = await browser.tabs.get(tabId);
+  if (!tab.url || tab.id == null) return;
+  const site = getCurrentHost(tab.url);
+  const sites = await getSites();
+  const enabled = sites.includes(site);
+
+  updateBadge(tab.id, enabled);
+}
+
+/** @param {number} tabId @param {boolean} enabled */
+function updateBadge(tabId, enabled) {
+  browser.action.setBadgeText({
+    tabId: tabId,
+    text: enabled ? "✓" : "x",
+  });
+  browser.action.setBadgeBackgroundColor({
+    tabId: tabId,
+    color: enabled ? "#00cc00" : "#cccccc",
   });
 }
 
-browser.storage.onChanged.addListener((changes) => {
-  if (changes.commandKey) {
-    setCommandKey(changes.commandKey.newValue);
-  }
-});
+/** @returns {Promise<string[]>} */
+async function getSites() {
+  return (await browser.storage.local.get("sites")).sites || [];
+}
 
-browser.commands.onCommand.addListener(async (command) => {
-  if (command === "toggle-dark-mode") {
-    const { extensionStatus = true } = await browser.storage.local.get("extensionStatus");
-
-    if (!extensionStatus) {
-      return;
-    }
-
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-
-    if (!tab.id) {
-      throw new Error("Failed to get current tab id.");
-    }
-
-    browser.tabs.sendMessage(tab.id, { action: "toggle-dark-mode" });
-  }
-});
+/** @param {string} url */
+function getCurrentHost(url) {
+  return new URL(url).host;
+}

@@ -1,38 +1,28 @@
 {
-  "manifest_version": 2,
-  "name": "Force Dark Mode",
-  "version": "1.2",
-  "description": "Toggle dark mode on and off on any website by pressing a key shortcut.",
-  "permissions": [
-    "<all_urls>",
-    "activeTab",
-    "storage"
-  ],
+  "manifest_version": 3,
+  "name": "Dark Mode",
+  "version": "2.0.0",
+  "description": "Invert site colors.",
+  "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
   "background": {
-    "scripts": ["src/background.js"],
-    "persistent": false
+    "scripts": ["src/background.js"]
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["src/script.js"]
+      "js": ["src/content.js"]
     }
   ],
-  "commands": {
-    "toggle-dark-mode": {
-      "suggested_key": {
-        "default": "Ctrl+Comma"
-      },
-      "description": "Toggle dark mode"
-    }
-  },
-  "browser_action": {
+  "action": {
+    "default_title": "Toggle dark mode for this site",
     "default_icon": {
       "16": "src/icons/icon16.png",
       "32": "src/icons/icon32.png"
-    },
-    "default_title": "Force Dark Mode",
-    "default_popup": "src/popup/index.html"
+    }
+  },
+  "options_ui": {
+    "page": "src/options.html"
   },
   "icons": {
     "48": "src/icons/icon48.png",
