@@ -1,0 +1,58 @@
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style type="text/css">
+    html, main {
+      background: #23222b;
+      --font: 16px mono;
+      --spacing: 20px;
+      --radius: 5px;
+      --green-500: #22c55e;
+      --text-color: #e2e8f0;
+    }
+
+    main {
+      display: grid;
+      grid-auto-flow: row;
+      gap: var(--spacing);
+    }
+
+    #sitesArea {
+      height: 300px;
+      font: var(--font);
+      background: #1c1917;
+      color: var(--text-color);
+      padding: var(--radius) var(--spacing);
+      border: 1px solid;
+      border-radius: var(--radius);
+      outline: 0;
+      resize: vertical;
+
+      &:focus, &:active {
+        border-color: var(--green-500);
+      }
+    }
+
+    #saveBtn {
+      padding: var(--radius);
+      text-align: center;
+      font: var(--font);
+      font-weight: bold;
+      cursor: pointer;
+      border: 0;
+      outline: 0;
+      border-radius: var(--radius);
+      background: var(--green-500);
+
+      &:hover {
+        background: var(--text-color);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <textarea id="sitesArea"></textarea>
+    <button id="saveBtn">Save</button>
+  </main>
+  <script src="options.js"></script>
+</body>
