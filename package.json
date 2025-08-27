@@ -5,11 +5,13 @@
   "main": "src/script.js",
   "author": "Armando",
   "license": "MIT",
+  "type": "module",
   "scripts": {
-    "build": "web-ext build --artifacts-dir build --overwrite-dest --filename dark-mode.xpi"
+    "build": "node --experimental-strip-types build.ts"
   },
   "devDependencies": {
     "@types/firefox-webext-browser": "^120.0.4",
-    "web-ext": "^8.8.0"
+    "esbuild": "^0.25.9",
+    "web-ext": "^8.9.0"
   }
 }

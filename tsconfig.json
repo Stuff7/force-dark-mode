@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "ESNext",
+    "checkJs": true,
+    "rootDir": ".",
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "allowUnusedLabels": true,
+    "outDir": "dist",
+    "sourceMap": true,
+    "noImplicitThis": true,
+    "baseUrl": ".",
+    "paths": {
+      "dark-mode/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*", "*.d.ts", "*.ts"],
+  "exclude": ["build", "node_modules", "**/node_modules/*"]
+}
