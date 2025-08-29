@@ -1,4 +1,16 @@
-import { debounce, getCurrentTab, getElementByIdOrThrow } from "./utils";
+import {
+  debounce,
+  fetchBrowserStorage,
+  getBlacklist,
+  getCurrentTab,
+  getElementByIdOrThrow,
+  saveBlacklistFromText,
+  saveSitesFromText,
+  sendBrowserMessage,
+} from "./utils";
+
+let tab: (browser.tabs.Tab & { id: number }) | undefined;
+let url: URL | undefined;
 
 const shortcutBtn = getElementByIdOrThrow<HTMLButtonElement>("shortcutBtn");
 const shortcutStatus = getElementByIdOrThrow("shortcutStatus");
@@ -143,23 +155,41 @@ function saveCommandKey(commandKey: string) {
   });
 }
 
-const sitesList = getElementByIdOrThrow<HTMLTextAreaElement>("sitesList");
+const blacklistInput = getElementByIdOrThrow<HTMLTextAreaElement>("blacklist");
+const blacklistStatus = getElementByIdOrThrow("blacklistStatus");
+const sitesInput = getElementByIdOrThrow<HTMLTextAreaElement>("sitesList");
 const sitesStatus = getElementByIdOrThrow("sitesStatus");
 
+async function saveBlacklist() {
+  if (!url) return;
+  await saveBlacklistFromText(url.host, blacklistInput.value);
+  blacklistStatus.textContent = "Saved!";
+}
+
+window.addEventListener("blur", () => {
+  if (tab)
+    sendBrowserMessage(tab.id, {
+      event: "savePopupData",
+      blacklistText: blacklistInput.value,
+      sitesText: sitesInput.value,
+    });
+});
+
+const saveBlacklistDebounced = debounce(saveBlacklist, 300);
+
+blacklistInput.addEventListener("input", () => {
+  blacklistStatus.textContent = "Saving...";
+  saveBlacklistDebounced();
+});
+
 async function saveSites() {
-  const sites = sitesList.value
-    .split("\n")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  await browser.storage.sync.set({ sites });
+  await saveSitesFromText(sitesInput.value);
   sitesStatus.textContent = "Saved!";
 }
 
-window.addEventListener("unload", saveSites);
+const saveSitesDebounced = debounce(saveSites, 300);
 
-const saveSitesDebounced = debounce(saveSites, 500);
-
-sitesList.addEventListener("input", () => {
+sitesInput.addEventListener("input", () => {
   sitesStatus.textContent = "Saving...";
   saveSitesDebounced();
 });
@@ -168,22 +198,29 @@ const zapBtn = getElementByIdOrThrow<HTMLButtonElement>("zapBtn");
 
 zapBtn.addEventListener("click", async () => {
   const tab = await getCurrentTab();
-  browser.tabs.sendMessage(tab.id, { action: "toggleZapMode" });
+  sendBrowserMessage(tab.id, { event: "toggleZapMode" });
   window.close();
 });
 
 (async () => {
-  const tab = await getCurrentTab();
-  const inZapMode: boolean = await browser.tabs.sendMessage(tab.id, {
-    type: "getZapMode",
+  tab = await getCurrentTab();
+  const inZapMode: boolean = await sendBrowserMessage(tab.id, {
+    event: "getZapMode",
   });
   zapBtn.textContent = inZapMode ? "⚡ Exit Zap Mode" : "⚡ Enter Zap Mode";
 
   loadDefaultShortcut();
-  const { commandKey, sites } = await browser.storage.sync.get([
+  const { commandKey, blacklists, sites } = await fetchBrowserStorage([
     "commandKey",
+    "blacklists",
     "sites",
   ]);
+
   if (commandKey) setKeyCombination(commandKey);
-  if (Array.isArray(sites)) sitesList.value = sites.join("\n");
+
+  sitesInput.value = sites.join("\n\n");
+
+  url = tab.url ? new URL(tab.url) : undefined;
+  if (!url) return;
+  blacklistInput.value = getBlacklist(blacklists, url.host).join("\n\n");
 })();
