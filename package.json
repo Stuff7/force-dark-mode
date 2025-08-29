@@ -10,8 +10,13 @@
     "build": "node --experimental-strip-types build.ts"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
     "@types/firefox-webext-browser": "^120.0.4",
     "esbuild": "^0.25.9",
+    "postcss": "^8.5.6",
+    "svelte": "^5.38.6",
+    "tailwindcss": "^4.1.12",
+    "typescript": "^5.9.2",
     "web-ext": "^8.9.0"
   }
 }
