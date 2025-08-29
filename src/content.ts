@@ -562,15 +562,20 @@ darkModeStyle.dataset.darkMode = "";
 darkModeStyle.setAttribute("type", "text/css");
 async function toggleDarkMode(enabled: boolean) {
   if (enabled) {
-    const blacklist = getBlacklist(
-      (await fetchBrowserStorage("blacklists")).blacklists,
-    ).join(", ");
+    const blacklist = [
+      "img",
+      "picture",
+      "video",
+      "iframe",
+      `#${shadowHost.id}`,
+      ...getBlacklist((await fetchBrowserStorage("blacklists")).blacklists),
+    ].join(", ");
 
     darkModeStyle.innerHTML = `
       html {
         filter: invert(1) hue-rotate(180deg) !important;
       }
-      img, picture, video, iframe, #${shadowHost.id}, ${blacklist} {
+      ${blacklist} {
         filter: invert(1) hue-rotate(180deg) !important;
       }
     `;
