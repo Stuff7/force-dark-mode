@@ -53,7 +53,7 @@ const CONFIG = {
     outputBundle: path.join(BUILD, "bundle.js"),
     globalName: "app",
     format: "iife" as BuildOptions["format"],
-    minify: false,
+    minify: true,
     sourcemap: true,
   },
 };
