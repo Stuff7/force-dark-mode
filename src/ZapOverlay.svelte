@@ -11,6 +11,7 @@
     onBrowserMessage,
     setBrowserStorage,
     toggleSite,
+    urlToID,
   } from "./utils";
 
   const { shadowId }: { shadowId: string } = $props();
@@ -460,16 +461,18 @@
   }
 
   (async () => {
+    const urlID = urlToID(location);
+
     onBrowserMessage(async (message) => {
       if (message.event === "toggleDarkMode") {
-        toggleDarkMode(await toggleSite(location.host));
+        toggleDarkMode(await toggleSite(urlID));
       } else if (message.event === "toggleZapMode") {
         setZapMode(!inZapMode);
       } else if (message.event === "getZapMode") {
         return inZapMode;
       } else if (message.event === "blacklistUpdate") {
         const { sites } = await fetchBrowserStorage("sites");
-        await toggleDarkMode(sites.includes(location.host));
+        await toggleDarkMode(sites.includes(urlID));
         closeEditor();
       } else if (message.event === "highlightSelector") {
         if (!message.selector) {
@@ -490,13 +493,12 @@
     });
 
     if (
-      (await fetchBrowserStorage("sites")).sites.some(
-        (host) => host === location.host,
-      )
+      (await fetchBrowserStorage("sites")).sites.some((host) => host === urlID)
     ) {
       toggleDarkMode(true);
     }
   })();
+
   const hlClasses = "fixed outline outline-solid outline-2 pointer-events-none";
   const hlStyle = (hl: DOMRect) =>
     `left: ${hl.x}px; top: ${hl.y}px; width: ${hl.width}px; height: ${hl.height}px;`;

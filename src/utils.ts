@@ -11,9 +11,13 @@ export type StorageChanges = {
   };
 };
 
+export function urlToID(url: Location | URL) {
+  return url.protocol.startsWith("http") ? url.host : url.pathname;
+}
+
 export function getBlacklist(
   blacklists: Storage["blacklists"],
-  host = location.host,
+  host = urlToID(location),
 ) {
   if (!blacklists[host]) blacklists[host] = [];
   return blacklists[host];
@@ -72,10 +76,6 @@ export function generateShortId(length = 8) {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
   return Array.from(array, (x) => chars[x % chars.length]).join("");
-}
-
-export function getCurrentHost(url: string) {
-  return new URL(url).host;
 }
 
 export async function toggleSite(url: string) {

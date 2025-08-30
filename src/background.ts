@@ -1,9 +1,9 @@
 import {
-  getCurrentHost,
   getCurrentTab,
   fetchBrowserStorage,
   sendBrowserMessage,
   onStorageChange,
+  urlToID,
 } from "./utils";
 
 function setCommandKey(commandKey: string) {
@@ -35,9 +35,9 @@ onStorageChange(async (changes) => {
 
   const sites: string[] = changes.sites.newValue || [];
 
-  if (!tab.url || tab.id == null || !tab.url.startsWith("http")) return;
+  if (!tab.url || tab.id == null) return;
 
-  const site = getCurrentHost(tab.url);
+  const site = urlToID(new URL(tab.url));
   const enabled = sites.includes(site);
 
   updateBadge(tab.id, enabled);
@@ -52,7 +52,7 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
 async function updateTabBadge(tabId: number) {
   const tab = await browser.tabs.get(tabId);
   if (!tab.url || tab.id == null) return;
-  const site = getCurrentHost(tab.url);
+  const site = urlToID(new URL(tab.url));
   const { sites } = await fetchBrowserStorage("sites");
   const enabled = sites.includes(site);
 

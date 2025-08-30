@@ -5,6 +5,7 @@ import {
   getBlacklist,
   getCurrentTab,
   sendBrowserMessage,
+  urlToID,
 } from "./utils";
 
 getCurrentTab().then(async (tab) => {
@@ -45,7 +46,7 @@ getCurrentTab().then(async (tab) => {
 
   if (commandKey) initialShortcut = commandKey;
 
-  const blacklist = getBlacklist(blacklists, url.host);
+  const blacklist = getBlacklist(blacklists, urlToID(url));
 
   mount(Popup, {
     target: document.body,
@@ -53,7 +54,7 @@ getCurrentTab().then(async (tab) => {
       tabId: tab.id,
       url,
       inZapMode,
-      sitesText: sites.join("\n\n"),
+      sites,
       blacklist,
       initialShortcut,
     },

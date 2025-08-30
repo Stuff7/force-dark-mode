@@ -3,10 +3,10 @@
   import {
     debounce,
     fetchBrowserStorage,
-    getBlacklist,
     onStorageChange,
     sendBrowserMessage,
     setBrowserStorage,
+    urlToID,
   } from "./utils";
 
   const {
@@ -19,16 +19,20 @@
     tabId: number;
     url: URL;
     inZapMode: boolean;
-    sitesText: string;
+    sites: string[];
     blacklist: string[];
     initialShortcut: string;
   } = $props();
 
-  let sitesText = $state(props.sitesText);
+  const urlID = urlToID(url);
+
+  let sitesText = $state(props.sites.join("\n\n"));
   let blacklist = $state(props.blacklist);
-  let shortcutStatus = $state(`Current: (${initialShortcut})`);
+  let shortcutStatus = $state(`Toggle with: (${initialShortcut})`);
   let blacklistStatus = $state("");
   let sitesStatus = $state("");
+
+  let isDarkModeOn = $derived(sitesText.split("\n\n").includes(urlID));
 
   let listeningForShortcut = false;
 
@@ -58,9 +62,6 @@
   onStorageChange((changes) => {
     if (changes.sites) {
       sitesText = changes.sites.newValue.join("\n\n");
-    }
-    if (changes.blacklists) {
-      blacklist = getBlacklist(changes.blacklists.newValue, url.host);
     }
   });
 
@@ -144,7 +145,7 @@
     }
 
     saveCommandKey(combination);
-    shortcutStatus = `Current: (${combination})`;
+    shortcutStatus = `Toggle with: (${combination})`;
     listeningForShortcut = false;
   }
 
@@ -159,7 +160,7 @@
     await setBrowserStorage({
       blacklists: {
         ...blacklists,
-        [url.host]: blacklist,
+        [urlID]: blacklist,
       },
     });
   }
@@ -192,8 +193,20 @@
 
 <svelte:window onkeydown={handleKeydown} onblur={handleWindowBlur} />
 
-<div class="bg-zinc-800 text-zinc-200 p-4 w-75 font-sans">
-  <h1 class="text-lg font-medium mb-3 text-white text-center">Dark Mode</h1>
+<div class="bg-zinc-800 text-zinc-200 p-4 w-75 font-sans rounded-md">
+  <h1
+    class="flex gap-2 items-center justify-between text-lg font-medium mb-3 text-white"
+  >
+    <span>Dark Mode</span>
+    <button
+      class="grow px-2 py-1 text-base text-zinc-900 cursor-pointer rounded-sm"
+      class:bg-green-500={!isDarkModeOn}
+      class:bg-rose-300={isDarkModeOn}
+      onclick={() => sendBrowserMessage(tabId, { event: "toggleDarkMode" })}
+    >
+      Toggle <strong>{isDarkModeOn ? "OFF" : "ON"}</strong>
+    </button>
+  </h1>
 
   <button
     onclick={handleShortcutClick}
