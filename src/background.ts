@@ -2,8 +2,8 @@ import {
   getCurrentHost,
   getCurrentTab,
   fetchBrowserStorage,
-  type StorageChanges,
   sendBrowserMessage,
+  onStorageChange,
 } from "./utils";
 
 function setCommandKey(commandKey: string) {
@@ -20,14 +20,12 @@ browser.commands.onCommand.addListener(async (command) => {
   }
 });
 
-browser.storage.onChanged.addListener(async (c, area) => {
-  const changes = c as StorageChanges;
-
-  if (area !== "sync") return;
-
+onStorageChange(async (changes) => {
   const tab = await getCurrentTab();
 
-  if (changes.commandKey) setCommandKey(changes.commandKey.newValue);
+  if (changes.commandKey) {
+    setCommandKey(changes.commandKey.newValue);
+  }
 
   if (changes.blacklists) {
     sendBrowserMessage(tab.id, { event: "blacklistUpdate" });
@@ -62,11 +60,11 @@ async function updateTabBadge(tabId: number) {
 }
 
 function updateBadge(tabId: number, enabled: boolean) {
-  browser.action.setBadgeText({
+  browser.browserAction.setBadgeText({
     tabId: tabId,
     text: enabled ? "✓" : "x",
   });
-  browser.action.setBadgeBackgroundColor({
+  browser.browserAction.setBadgeBackgroundColor({
     tabId: tabId,
     color: enabled ? "#00cc00" : "#cccccc",
   });

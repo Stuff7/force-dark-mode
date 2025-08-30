@@ -23,7 +23,6 @@ getCurrentTab().then(async (tab) => {
 
   let initialShortcut = "Ctrl+Comma";
 
-  // load default shortcut
   try {
     const commands = await browser.commands.getAll();
     const toggleCommand = commands.find((cmd) => cmd.name === "toggleDarkMode");

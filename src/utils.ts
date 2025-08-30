@@ -199,6 +199,12 @@ export function sendBrowserMessage(tabId: number, ev: BrowserEvent) {
   return browser.tabs.sendMessage(tabId, ev);
 }
 
+export function onStorageChange(fn: (changes: StorageChanges) => void) {
+  return browser.storage.onChanged.addListener((changes, area) => {
+    if (area === "sync") return fn(changes);
+  });
+}
+
 export function onBrowserMessage(fn: (ev: BrowserEvent) => void) {
   return browser.runtime.onMessage.addListener(fn);
 }

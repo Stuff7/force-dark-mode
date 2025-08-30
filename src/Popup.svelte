@@ -3,6 +3,8 @@
   import {
     debounce,
     fetchBrowserStorage,
+    getBlacklist,
+    onStorageChange,
     sendBrowserMessage,
     setBrowserStorage,
   } from "./utils";
@@ -52,6 +54,15 @@
     "MetaLeft",
     "MetaRight",
   ];
+
+  onStorageChange((changes) => {
+    if (changes.sites) {
+      sitesText = changes.sites.newValue.join("\n\n");
+    }
+    if (changes.blacklists) {
+      blacklist = getBlacklist(changes.blacklists.newValue, url.host);
+    }
+  });
 
   function saveCommandKey(commandKey: string) {
     browser.storage.sync.set({ commandKey }).catch((err) => {

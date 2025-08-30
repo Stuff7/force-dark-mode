@@ -1,12 +1,12 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "Dark Mode",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Invert site colors.",
-  "permissions": ["storage"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": ["storage", "<all_urls>"],
   "background": {
-    "scripts": ["./background.js"]
+    "scripts": ["./background.js"],
+    "persistent": false
   },
   "content_scripts": [
     {
@@ -22,7 +22,7 @@
       "description": "Toggle dark mode"
     }
   },
-  "action": {
+  "browser_action": {
     "default_title": "Toggle dark mode for this site",
     "default_icon": {
       "16": "./icons/icon16.png",
@@ -34,7 +34,7 @@
     "48": "./icons/icon48.png",
     "128": "./icons/icon128.png"
   },
-  "browser_specific_settings": {
+  "applications": {
     "gecko": {
       "id": "force-dark-mode@stuff7.github.io"
     }
