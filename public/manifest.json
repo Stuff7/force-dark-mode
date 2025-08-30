@@ -23,7 +23,7 @@
     }
   },
   "browser_action": {
-    "default_title": "Toggle dark mode for this site",
+    "default_title": "Configure dark mode for this site",
     "default_icon": {
       "16": "./icons/icon16.png",
       "32": "./icons/icon32.png"

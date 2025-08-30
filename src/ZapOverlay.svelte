@@ -541,7 +541,7 @@
         >
           <button
             type="button"
-            class="h-6 w-6 self-end bg-red-500 hover:bg-red-600 rounded text-white"
+            class="h-6 w-6 self-end bg-red-500 hover:bg-red-600 rounded text-white cursor-pointer"
             onclick={closeEditor}
           >
             ×
@@ -568,7 +568,7 @@
 
           <button
             type="submit"
-            class="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded"
+            class="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded cursor-pointer"
           >
             Add To Blacklist
           </button>
