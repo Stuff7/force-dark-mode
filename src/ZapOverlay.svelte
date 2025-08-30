@@ -2,21 +2,20 @@
   import {
     escapeCSS,
     fetchBrowserStorage,
-    generateShortId,
     getBlacklist,
     getElementPath,
     getNthChild,
+    getNthOfType,
+    getUniqueAttributes,
+    getUniqueClasses,
     onBrowserMessage,
-    saveBlacklistFromText,
-    saveSitesFromText,
     setBrowserStorage,
     toggleSite,
   } from "./utils";
 
+  const { shadowId }: { shadowId: string } = $props();
+
   let inZapMode = $state(false);
-  let pickedElement = $state<HTMLElement | null>();
-  let matchedElems = $state<NodeListOf<Element> | undefined>();
-  let highlightedElems = $state<HTMLElement[]>([]);
   let selectedText = $state("");
   let matchCount = $state(0);
   let specificityValue = $state(8);
@@ -31,11 +30,12 @@
   let endDragX = $state(0);
   let endDragY = $state(0);
 
-  let zapOverlay = $state<HTMLDivElement>();
-  let zapHighlight = $state<HTMLDivElement>();
-  let editorForm = $state<HTMLFormElement>();
+  let zapHighlight = $state<DOMRect>(new DOMRect());
+  let highlights = $state<DOMRect[]>([]);
+  let popupHighlights = $state<DOMRect[]>([]);
 
-  const shadowId = "dark-mode-" + generateShortId();
+  let pickedElement: HTMLElement | undefined;
+  let matchedElems: NodeListOf<Element> | undefined;
 
   function setDragPosition(x: number, y: number) {
     dragX = x;
@@ -50,8 +50,8 @@
     endDragY = y;
   }
 
-  function startDrag(ev: PointerEvent) {
-    if (ev.target !== editorForm || ev.button !== 0) return;
+  function startDrag(this: HTMLElement, ev: PointerEvent) {
+    if (ev.target !== this || ev.button !== 0) return;
     dragging = true;
     startDragX = ev.pageX;
     startDragY = ev.pageY;
@@ -80,17 +80,16 @@
     }
   }
 
-  function getHoveredElement(ev: MouseEvent) {
-    if (!zapOverlay) return;
-    zapOverlay.style.pointerEvents = "none";
+  function getHoveredElement(this: HTMLElement, ev: MouseEvent) {
+    this.style.pointerEvents = "none";
     const el = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement;
-    zapOverlay.style.pointerEvents = "auto";
+    this.style.pointerEvents = "auto";
     return el;
   }
 
-  function zapElement(ev: MouseEvent) {
+  function zapElement(this: HTMLElement, ev: MouseEvent) {
     if (pickedElement) return;
-    pickedElement = getHoveredElement(ev);
+    pickedElement = getHoveredElement.call(this, ev);
     if (!pickedElement) return;
     tweakSpecificity();
     showEditor = true;
@@ -119,10 +118,10 @@
   }
 
   function onScroll() {
-    if (pickedElement) createHighlight(pickedElement, zapHighlight);
+    if (pickedElement) zapHighlight = pickedElement.getBoundingClientRect();
     if (!matchedElems) return;
     for (let i = 0; i < matchedElems.length; i++) {
-      createHighlight(matchedElems[i] as HTMLElement, highlightedElems[i]);
+      highlights[i] = matchedElems[i].getBoundingClientRect();
     }
   }
 
@@ -132,58 +131,23 @@
     try {
       matchedElems = document.querySelectorAll(selectorValue);
       matchCount = matchedElems.length;
-
-      for (const el of matchedElems) {
-        const hl = createHighlight(el as HTMLElement);
-        hl.classList.add("secondary");
-        highlightedElems.push(hl);
-      }
-
-      if (zapOverlay) {
-        zapOverlay.append(...highlightedElems);
-      }
+      highlights = [...matchedElems].map((el) => el.getBoundingClientRect());
     } catch (e) {
       matchCount = 0;
     }
   }
 
   function removeHighlightedElems() {
-    for (const hl of highlightedElems) hl.remove();
-    highlightedElems = [];
+    highlights = [];
     matchedElems = undefined;
   }
 
-  function createHighlight(
-    target: HTMLElement,
-    el: HTMLElement = document.createElement("div"),
-  ) {
-    el.classList.add("hl");
-    const rect = target.getBoundingClientRect();
-    Object.assign(el.style, {
-      position: "fixed",
-      top: `${rect.top}px`,
-      left: `${rect.left}px`,
-      width: `${rect.width}px`,
-      height: `${rect.height}px`,
-      background: "rgba(255, 240, 0, 0.25)",
-      outline: "2px solid #ff0",
-      pointerEvents: "none",
-    });
-
-    if (el.classList.contains("secondary")) {
-      el.style.background = "rgba(255, 240, 0, 0.25)";
-      el.style.outline = "2px solid #ff0";
-    }
-
-    return el;
-  }
-
-  function highlightZapElement(ev: MouseEvent) {
+  function highlightZapElement(this: HTMLElement, ev: MouseEvent) {
     if (pickedElement) return;
-    const hovered = getHoveredElement(ev);
+    const hovered = getHoveredElement.call(this, ev);
     if (!hovered) return;
 
-    createHighlight(hovered, zapHighlight);
+    zapHighlight = hovered.getBoundingClientRect();
     selectedText = [hovered.tagName.toLowerCase(), ...hovered.classList].join(
       ".",
     );
@@ -191,7 +155,7 @@
 
   async function addToBlacklist(ev: SubmitEvent) {
     ev.preventDefault();
-    const { blacklists } = await fetchBrowserStorage(["blacklists"]);
+    const { blacklists } = await fetchBrowserStorage("blacklists");
     getBlacklist(blacklists).push(selectorValue);
     await setBrowserStorage({ blacklists });
   }
@@ -199,6 +163,7 @@
   function tweakSpecificity() {
     if (!pickedElement) return;
     const v = specificityValue;
+
     let selector = "";
 
     if (v === 0) {
@@ -207,6 +172,7 @@
       const tagName = pickedElement.tagName.toLowerCase();
       const id = pickedElement.id;
       const classes = Array.from(pickedElement.classList);
+
       if (id) {
         selector = `${tagName}#${escapeCSS(id)}`;
       } else if (classes.length > 0) {
@@ -214,10 +180,125 @@
       } else {
         selector = tagName;
       }
-    } else if (v === 8) {
+    } else if (v === 2) {
+      const tagName = pickedElement.tagName.toLowerCase();
+      const id = pickedElement.id;
+      const classes = Array.from(pickedElement.classList);
+
+      if (id) {
+        selector = `${tagName}#${escapeCSS(id)}`;
+      } else if (classes.length > 0) {
+        const classStr = classes.map((cls) => `.${escapeCSS(cls)}`).join("");
+        selector = `${tagName}${classStr}`;
+      } else {
+        selector = tagName;
+      }
+    } else if (v === 3) {
+      const tagName = pickedElement.tagName.toLowerCase();
+      const id = pickedElement.id;
+      const uniqueClasses = getUniqueClasses(pickedElement);
+      const uniqueAttrs = getUniqueAttributes(pickedElement);
+
+      let parts = [tagName];
+
+      if (id) {
+        parts.push(`#${escapeCSS(id)}`);
+      } else {
+        if (uniqueClasses.length > 0) {
+          parts.push(...uniqueClasses.map((cls) => `.${escapeCSS(cls)}`));
+        }
+        if (uniqueAttrs.length > 0) {
+          const attrStr = uniqueAttrs
+            .slice(0, 1)
+            .map(
+              (attr) => `[${escapeCSS(attr.name)}="${escapeCSS(attr.value)}"]`,
+            )
+            .join("");
+          parts.push(attrStr);
+        }
+      }
+
+      selector = parts.join("");
+    } else if (v === 4) {
+      const tagName = pickedElement.tagName.toLowerCase();
+      const id = pickedElement.id;
+      const uniqueClasses = getUniqueClasses(pickedElement);
+
+      let baseSelector = tagName;
+      if (id) {
+        baseSelector = `${tagName}#${escapeCSS(id)}`;
+      } else if (uniqueClasses.length > 0) {
+        baseSelector = `${tagName}.${escapeCSS(uniqueClasses[0])}`;
+      }
+
+      selector = `${baseSelector}${getNthChild(pickedElement)}`;
+    } else if (v === 5) {
+      const tagName = pickedElement.tagName.toLowerCase();
+      const id = pickedElement.id;
+      const parent = pickedElement.parentElement;
+
+      let childSelector = tagName;
+      if (id) {
+        childSelector = `${tagName}#${escapeCSS(id)}`;
+      } else {
+        const uniqueClasses = getUniqueClasses(pickedElement);
+        if (uniqueClasses.length > 0) {
+          childSelector = `${tagName}.${escapeCSS(uniqueClasses[0])}`;
+        }
+      }
+
+      if (parent) {
+        const parentTag = parent.tagName.toLowerCase();
+        const parentId = parent.id;
+        const parentClasses = Array.from(parent.classList);
+
+        let parentSelector = parentTag;
+        if (parentId) {
+          parentSelector = `${parentTag}#${escapeCSS(parentId)}`;
+        } else if (parentClasses.length > 0) {
+          parentSelector = `${parentTag}.${escapeCSS(parentClasses[0])}`;
+        }
+
+        selector = `${parentSelector} > ${childSelector}`;
+      } else {
+        selector = childSelector;
+      }
+    } else if (v === 6) {
+      const tagName = pickedElement.tagName.toLowerCase();
+      const id = pickedElement.id;
+      const parent = pickedElement.parentElement;
+
+      let childSelector = tagName;
+      if (id) {
+        childSelector = `${tagName}#${escapeCSS(id)}`;
+      } else {
+        const uniqueClasses = getUniqueClasses(pickedElement);
+        if (uniqueClasses.length > 0) {
+          childSelector = `${tagName}.${escapeCSS(uniqueClasses[0])}`;
+        } else {
+          childSelector = `${tagName}${getNthChild(pickedElement)}`;
+        }
+      }
+
+      if (parent) {
+        const parentTag = parent.tagName.toLowerCase();
+        const parentId = parent.id;
+
+        let parentSelector = parentTag;
+        if (parentId) {
+          parentSelector = `${parentTag}#${escapeCSS(parentId)}`;
+        }
+
+        selector = `${parentSelector} > ${childSelector}`;
+      } else {
+        selector = childSelector;
+      }
+    } else if (v === 7) {
       const path = getElementPath(pickedElement);
-      const pathLength = Math.min(path.length, 3);
+      const pathLength = Math.min(path.length, 2);
+
       const selectorParts: string[] = [];
+
       for (
         let i = Math.max(0, path.length - pathLength);
         i < path.length;
@@ -227,6 +308,34 @@
         const tagName = element.tagName.toLowerCase();
         const id = element.id;
         const classes = Array.from(element.classList);
+
+        let part = tagName;
+        if (id) {
+          part = `${tagName}#${escapeCSS(id)}`;
+        } else if (classes.length > 0) {
+          part = `${tagName}.${escapeCSS(classes[0])}`;
+        }
+
+        selectorParts.push(part);
+      }
+
+      selector = selectorParts.join(" > ");
+    } else if (v === 8) {
+      const path = getElementPath(pickedElement);
+      const pathLength = Math.min(path.length, 3);
+
+      const selectorParts: string[] = [];
+
+      for (
+        let i = Math.max(0, path.length - pathLength);
+        i < path.length;
+        i++
+      ) {
+        const element = path[i];
+        const tagName = element.tagName.toLowerCase();
+        const id = element.id;
+        const classes = Array.from(element.classList);
+
         let part = tagName;
         if (id) {
           part = `${tagName}#${escapeCSS(id)}`;
@@ -237,11 +346,55 @@
             .join("");
           part = `${tagName}${classStr}`;
         }
+
         if (i === path.length - 1 && !id) {
           part += getNthChild(element);
         }
+
         selectorParts.push(part);
       }
+
+      selector = selectorParts.join(" > ");
+    } else {
+      const path = getElementPath(pickedElement);
+      const selectorParts: string[] = [];
+
+      path.forEach((element) => {
+        const tagName = element.tagName.toLowerCase();
+        const id = element.id;
+        const classes = Array.from(element.classList);
+        const attrs = getUniqueAttributes(element);
+
+        let part = tagName;
+
+        if (id) {
+          part = `${tagName}#${escapeCSS(id)}`;
+        } else {
+          if (classes.length > 0) {
+            const classStr = classes
+              .map((cls) => `.${escapeCSS(cls)}`)
+              .join("");
+            part = `${tagName}${classStr}`;
+          }
+
+          if (attrs.length > 0) {
+            const attrStr = attrs
+              .slice(0, 1)
+              .map(
+                (attr) =>
+                  `[${escapeCSS(attr.name)}="${escapeCSS(attr.value)}"]`,
+              )
+              .join("");
+            part += attrStr;
+          }
+
+          part += getNthChild(element);
+          part += getNthOfType(element);
+        }
+
+        selectorParts.push(part);
+      });
+
       selector = selectorParts.join(" > ");
     }
 
@@ -265,7 +418,7 @@
 
   function closeEditor() {
     specificityValue = 8;
-    pickedElement = null;
+    pickedElement = undefined;
     showEditor = false;
     removeHighlightedElems();
   }
@@ -318,9 +471,21 @@
         const { sites } = await fetchBrowserStorage("sites");
         await toggleDarkMode(sites.includes(location.host));
         closeEditor();
-      } else if (message.event === "savePopupData") {
-        saveBlacklistFromText(location.host, message.blacklistText);
-        saveSitesFromText(message.sitesText);
+      } else if (message.event === "highlightSelector") {
+        if (!message.selector) {
+          popupHighlights = [];
+          return;
+        }
+
+        const elems = document.body.querySelectorAll(
+          message.selector,
+        ) as NodeListOf<HTMLElement>;
+
+        popupHighlights = elems
+          ? [...elems].map((el) => el.getBoundingClientRect())
+          : [];
+      } else if (message.event === "popupClose") {
+        popupHighlights = [];
       }
     });
 
@@ -332,6 +497,9 @@
       toggleDarkMode(true);
     }
   })();
+  const hlClasses = "fixed outline outline-solid outline-2 pointer-events-none";
+  const hlStyle = (hl: DOMRect) =>
+    `left: ${hl.x}px; top: ${hl.y}px; width: ${hl.width}px; height: ${hl.height}px;`;
 </script>
 
 <svelte:window
@@ -343,8 +511,7 @@
 
 {#if inZapMode}
   <div
-    bind:this={zapOverlay}
-    class="fixed inset-0 bg-black/30 border-4 border-dashed border-white p-4 cursor-crosshair z-[2147483647]"
+    class="fixed inset-0 bg-black/30 border-4 border-dashed border-white p-4 cursor-crosshair z-[2147483647] pointer-events-auto w-dvw h-dvh"
     onpointerdown={zapElement}
     onpointermove={highlightZapElement}
   >
@@ -353,21 +520,19 @@
     >
 
     <div
-      bind:this={zapHighlight}
-      class="fixed bg-blue-400 bg-opacity-25 outline outline-2 outline-blue-400 pointer-events-none z-10"
+      class="{hlClasses} z-2 bg-blue-400/50 outline-blue-400"
+      style={hlStyle(zapHighlight)}
     >
       <strong
-        class="absolute top-full left-0 text-white bg-black bg-opacity-75 px-1 text-sm"
+        class="absolute top-full left-0 text-white bg-black bg-opacity-75 px-1 text-sm truncate text-ellipsis max-w-full"
       >
         {selectedText}
       </strong>
 
       {#if showEditor}
         <form
-          bind:this={editorForm}
-          class="fixed bg-gray-800 text-gray-200 p-4 w-[350px] border border-gray-600 rounded-lg pointer-events-auto flex flex-col gap-2 {dragging
-            ? 'cursor-grabbing'
-            : 'cursor-grab'}"
+          class="fixed bg-zinc-800 text-zinc-200 p-4 w-[350px] border border-zinc-600 rounded-lg pointer-events-auto flex flex-col gap-2 cursor-grab"
+          class:cursor-grabbing={dragging}
           style="left: {dragX}px; top: {dragY}px;"
           onsubmit={addToBlacklist}
           onpointerdown={startDrag}
@@ -382,10 +547,10 @@
 
           <div class="flex items-center gap-2">
             <input
-              class="flex-1 bg-gray-700"
+              class="flex-1 bg-zinc-700"
               type="range"
-              min="0"
-              max="9"
+              min={0}
+              max={9}
               bind:value={specificityValue}
               oninput={tweakSpecificity}
             />
@@ -393,7 +558,7 @@
           </div>
 
           <textarea
-            class="bg-gray-700 text-gray-200 p-2 rounded border border-gray-600 resize-y font-mono text-sm"
+            class="bg-zinc-700 text-zinc-200 p-2 rounded border border-zinc-600 resize-y font-mono text-sm"
             rows="5"
             bind:value={selectorValue}
             oninput={highlightElems}
@@ -408,5 +573,18 @@
         </form>
       {/if}
     </div>
+    {#each highlights as hl}
+      <div
+        class="{hlClasses} bg-yellow-400/50 outline-yellow-400 z-1"
+        style={hlStyle(hl)}
+      ></div>
+    {/each}
   </div>
 {/if}
+
+{#each popupHighlights as hl}
+  <div
+    class="{hlClasses} bg-lime-400/50 outline-lime-400 z-3"
+    style={hlStyle(hl)}
+  ></div>
+{/each}

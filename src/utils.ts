@@ -184,108 +184,11 @@ export function getUniqueAttributes(
     }));
 }
 
-export function dragState<E extends HTMLElement>(el: E, dx = 0, dy = 0) {
-  let startX = dx;
-  let startY = dy;
-  let endX = dx;
-  let endY = dy;
-  el.classList.add("cursor-grab");
-
-  const ret = {
-    x: dx,
-    y: dy,
-    dragging: false,
-
-    addEvents() {
-      el.addEventListener("pointerdown", startDrag);
-      window.addEventListener("pointermove", drag);
-      window.addEventListener("pointerup", stopDrag);
-    },
-
-    removeEvents() {
-      el.removeEventListener("pointerdown", startDrag);
-      window.removeEventListener("pointermove", drag);
-      window.removeEventListener("pointerup", stopDrag);
-    },
-
-    setPosition(x: number, y: number) {
-      this.x = x;
-      this.y = y;
-      el.style.setProperty("--x", `${Math.round(this.x)}px`);
-      el.style.setProperty("--y", `${Math.round(this.y)}px`);
-    },
-
-    resetPosition(x: number, y: number) {
-      this.setPosition(x, y);
-      startX = x;
-      startY = y;
-      endX = x;
-      endY = y;
-    },
-  };
-
-  function startDrag(ev: PointerEvent) {
-    if (ev.target !== el || ev.button !== 0) return;
-
-    ret.dragging = true;
-
-    startX = ev.pageX;
-    startY = ev.pageY;
-
-    el.classList.add("cursor-grabbing");
-    drag(ev);
-  }
-
-  function drag(ev: PointerEvent) {
-    if (ret.dragging) {
-      ret.setPosition(endX + ev.pageX - startX, endY + ev.pageY - startY);
-    }
-  }
-
-  function stopDrag() {
-    ret.dragging = false;
-    endX = ret.x;
-    endY = ret.y;
-    el.classList.remove("cursor-grabbing");
-  }
-
-  return ret;
-}
-
-export async function saveBlacklistFromText(url: string, text: string) {
-  if (!url) return;
-
-  const blacklist = text
-    .split("\n")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  const { blacklists } = await fetchBrowserStorage("blacklists");
-  await setBrowserStorage({
-    blacklists: {
-      ...blacklists,
-      [url]: blacklist,
-    },
-  });
-}
-
-export async function saveSitesFromText(text: string) {
-  const sites = text
-    .split("\n")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  await setBrowserStorage({ sites });
-}
-
 type BrowserMsg<Name extends string, T = {}> = { event: Name } & T;
 
 type BrowserEvent =
-  | BrowserMsg<
-      "savePopupData",
-      {
-        blacklistText: string;
-        sitesText: string;
-      }
-    >
+  | BrowserMsg<"popupClose">
+  | BrowserMsg<"highlightSelector", { selector?: string }>
   | BrowserMsg<"toggleZapMode">
   | BrowserMsg<"toggleDarkMode">
   | BrowserMsg<"blacklistUpdate">

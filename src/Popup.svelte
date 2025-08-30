@@ -1,23 +1,34 @@
 <script lang="ts">
+  import { slide } from "svelte/transition";
   import {
     debounce,
     fetchBrowserStorage,
-    getBlacklist,
-    getCurrentTab,
-    saveBlacklistFromText,
-    saveSitesFromText,
     sendBrowserMessage,
+    setBrowserStorage,
   } from "./utils";
 
-  let tab = $state<(browser.tabs.Tab & { id: number }) | undefined>();
-  let url = $state<URL | undefined>();
-  let listeningForShortcut = $state(false);
-  let shortcutStatus = $state("Current: (none)");
-  let blacklistText = $state("");
+  const {
+    tabId,
+    url,
+    inZapMode,
+    initialShortcut,
+    ...props
+  }: {
+    tabId: number;
+    url: URL;
+    inZapMode: boolean;
+    sitesText: string;
+    blacklist: string[];
+    initialShortcut: string;
+  } = $props();
+
+  let sitesText = $state(props.sitesText);
+  let blacklist = $state(props.blacklist);
+  let shortcutStatus = $state(`Current: (${initialShortcut})`);
   let blacklistStatus = $state("");
-  let sitesText = $state("");
   let sitesStatus = $state("");
-  let zapButtonText = $state("⚡ Enter Zap Mode");
+
+  let listeningForShortcut = false;
 
   const KEYS = [
     "Comma",
@@ -41,30 +52,6 @@
     "MetaLeft",
     "MetaRight",
   ];
-
-  const defaultShortcut = "Ctrl+Comma";
-
-  async function loadDefaultShortcut() {
-    try {
-      const commands = await browser.commands.getAll();
-      const toggleCommand = commands.find(
-        (cmd) => cmd.name === "toggleDarkMode",
-      );
-
-      if (toggleCommand && toggleCommand.shortcut) {
-        setKeyCombination(toggleCommand.shortcut);
-      } else {
-        setKeyCombination(defaultShortcut);
-      }
-    } catch (error) {
-      console.error("Failed to load shortcut from manifest:", error);
-      setKeyCombination(defaultShortcut);
-    }
-  }
-
-  function setKeyCombination(combination: string) {
-    shortcutStatus = `Current: ${combination}`;
-  }
 
   function saveCommandKey(commandKey: string) {
     browser.storage.sync.set({ commandKey }).catch((err) => {
@@ -146,7 +133,7 @@
     }
 
     saveCommandKey(combination);
-    setKeyCombination(combination);
+    shortcutStatus = `Current: (${combination})`;
     listeningForShortcut = false;
   }
 
@@ -155,24 +142,27 @@
     shortcutStatus = "Press a key combination...";
   }
 
-  async function saveBlacklist() {
-    if (!url) return;
-    await saveBlacklistFromText(url.host, blacklistText);
-    blacklistStatus = "Saved!";
+  async function removeBlacklistItem(i: number) {
+    blacklist.splice(i, 1);
+    const { blacklists } = await fetchBrowserStorage("blacklists");
+    await setBrowserStorage({
+      blacklists: {
+        ...blacklists,
+        [url.host]: blacklist,
+      },
+    });
   }
 
   async function saveSites() {
-    await saveSitesFromText(sitesText);
+    const sites = sitesText
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    await setBrowserStorage({ sites });
     sitesStatus = "Saved!";
   }
 
-  const saveBlacklistDebounced = debounce(saveBlacklist, 300);
   const saveSitesDebounced = debounce(saveSites, 300);
-
-  function handleBlacklistInput() {
-    blacklistStatus = "Saving...";
-    saveBlacklistDebounced();
-  }
 
   function handleSitesInput() {
     sitesStatus = "Saving...";
@@ -180,43 +170,13 @@
   }
 
   async function handleZapClick() {
-    if (!tab) return;
-    sendBrowserMessage(tab.id, { event: "toggleZapMode" });
+    sendBrowserMessage(tabId, { event: "toggleZapMode" });
     window.close();
   }
 
-  function handleWindowBlur() {
-    if (tab) {
-      sendBrowserMessage(tab.id, {
-        event: "savePopupData",
-        blacklistText,
-        sitesText,
-      });
-    }
+  async function handleWindowBlur() {
+    sendBrowserMessage(tabId, { event: "popupClose" });
   }
-
-  (async () => {
-    tab = await getCurrentTab();
-    const inZapMode: boolean = await sendBrowserMessage(tab.id, {
-      event: "getZapMode",
-    });
-    zapButtonText = inZapMode ? "⚡ Exit Zap Mode" : "⚡ Enter Zap Mode";
-
-    loadDefaultShortcut();
-    const { commandKey, blacklists, sites } = await fetchBrowserStorage([
-      "commandKey",
-      "blacklists",
-      "sites",
-    ]);
-
-    if (commandKey) setKeyCombination(commandKey);
-
-    sitesText = sites.join("\n\n");
-
-    url = tab.url ? new URL(tab.url) : undefined;
-    if (!url) return;
-    blacklistText = getBlacklist(blacklists, url.host).join("\n\n");
-  })();
 </script>
 
 <svelte:window onkeydown={handleKeydown} onblur={handleWindowBlur} />
@@ -236,18 +196,49 @@
   <textarea
     bind:value={sitesText}
     oninput={handleSitesInput}
+    onblur={saveSites}
     class="w-full h-30 mt-2.5 p-2 rounded-md border border-zinc-600 bg-zinc-750 text-zinc-200 resize-y font-mono text-xs"
     placeholder="Sites list..."
   ></textarea>
 
   <p class="text-sm text-zinc-400 mt-1">{sitesStatus}</p>
 
-  <textarea
-    bind:value={blacklistText}
-    oninput={handleBlacklistInput}
-    class="w-full h-30 mt-2.5 p-2 rounded-md border border-zinc-600 bg-zinc-750 text-zinc-200 resize-y font-mono text-xs"
-    placeholder="Blacklist..."
-  ></textarea>
+  <div class="flex flex-col gap-3">
+    {#if blacklist.length}
+      <h2
+        class="text-lg font-bold tracking-wide text-zinc-200 uppercase border-b border-zinc-700 pb-1"
+      >
+        Blacklist
+      </h2>
+    {/if}
+    <ul class="flex flex-col gap-2 overflow-auto max-h-48 pr-1">
+      {#each blacklist as selector, i (selector)}
+        <li
+          class="group cursor-help flex shrink-0 items-center justify-between gap-3 rounded-sm bg-gradient-to-r from-zinc-900 to-zinc-700 text-zinc-200 shadow-md border border-zinc-600 hover:border-red-500/70 hover:shadow-red-500/30 transition-all overflow-hidden"
+          transition:slide={{ axis: "x" }}
+          onpointerenter={() =>
+            sendBrowserMessage(tabId, { event: "highlightSelector", selector })}
+          onpointerleave={() =>
+            sendBrowserMessage(tabId, { event: "highlightSelector" })}
+        >
+          <span
+            class="grow px-2 py-1 truncate text-sm font-mono tracking-tight"
+            title={selector}
+          >
+            {selector}
+          </span>
+          <button
+            class="flex items-center justify-center px-2 py-1 text-sm font-bold
+                 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white shadow cursor-pointer
+                 transition-all group-hover:scale-105 group-hover:shadow-red-500/40"
+            onclick={() => removeBlacklistItem(i)}
+          >
+            ✕
+          </button>
+        </li>
+      {/each}
+    </ul>
+  </div>
 
   <p class="text-sm text-zinc-400 mt-1">{blacklistStatus}</p>
 
@@ -255,6 +246,6 @@
     onclick={handleZapClick}
     class="block w-full p-2.5 mt-1.5 border-none rounded-md bg-zinc-700 text-zinc-200 text-sm cursor-pointer transition-colors hover:bg-zinc-600"
   >
-    {zapButtonText}
+    {inZapMode ? "⚡ Exit Zap Mode" : "⚡ Enter Zap Mode"}
   </button>
 </div>

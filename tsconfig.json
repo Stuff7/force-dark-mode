@@ -9,6 +9,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
     "allowUnusedLabels": true,
     "outDir": "dist",
     "sourceMap": true,
@@ -19,5 +20,5 @@
     }
   },
   "include": ["src/**/*", "*.d.ts", "*.ts"],
-  "exclude": ["build", "node_modules", "**/node_modules/*"]
+  "exclude": ["dist", "node_modules", "**/node_modules/*"]
 }

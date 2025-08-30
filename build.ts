@@ -10,6 +10,7 @@ import postcss from "postcss";
 import tailwindcss from "@tailwindcss/postcss";
 import { compile } from "svelte/compiler";
 import { cp } from "node:fs/promises";
+import { escapeCSS } from "./src/utils.ts";
 
 const ROOT = process.cwd();
 const SRC = path.join(ROOT, "src");
@@ -133,7 +134,10 @@ async function buildTailwind(): Promise<void> {
     let content = result.css;
     if (isRepl) {
       content = await fs.promises.readFile(file.out.value, "utf8");
-      content = content.replace('/* @import "tailwindcss"; */', result.css);
+      content = content.replace(
+        '/* @import "tailwindcss"; */',
+        escapeCSS(result.css),
+      );
     }
     await fs.promises.writeFile(file.out.value, content);
 
