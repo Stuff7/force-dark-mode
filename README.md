@@ -15,7 +15,7 @@ A browser extension that inverts site colors to provide a dark mode.
 1. Clone the repository:
 
  ```bash
- git clone https://github.com/your-username/dark-mode.git
+ git clone https://github.com/stuff7/dark-mode.git
  cd dark-mode
 ```
 
