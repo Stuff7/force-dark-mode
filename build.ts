@@ -5,6 +5,9 @@ import { cp } from "node:fs/promises";
 import { escapeCSS } from "./src/utils.ts";
 import { spawn } from "child_process";
 
+const isDev =
+  process.env.NODE_ENV === "development" || process.argv.includes("--dev");
+
 const ROOT = process.cwd();
 const SRC = path.join(ROOT, "src");
 const PUBLIC = path.join(ROOT, "public");
@@ -16,7 +19,10 @@ type TailwindIO = {
 };
 
 const CONFIG = {
-  filesToBuild: ["background.ts", "content.ts", "popup.ts"],
+  esbuild: {
+    args: isDev ? ["--sourcemap=inline"] : ["--minify"],
+    filesToBuild: ["background.ts", "content.ts", "popup.ts"],
+  },
 
   extension: {
     artifactsDir: BUILD,
@@ -24,7 +30,9 @@ const CONFIG = {
   },
 
   tailwind: {
-    io: [
+    args: isDev ? [] : ["-m"],
+    in: path.join(SRC, "base.css"),
+    out: [
       {
         path: path.join(BUILD, "popup.css"),
       },
@@ -37,7 +45,7 @@ const CONFIG = {
 
   svelte: {
     globalName: "app",
-    format: "iife",
+    format: isDev ? "esm" : "iife",
   },
 };
 
@@ -89,6 +97,7 @@ async function compileSvelteFile(path: string) {
   const { js, warnings } = compile(source, {
     filename: path,
     generate: "client",
+    dev: isDev,
   });
 
   if (warnings.length) {
@@ -119,31 +128,36 @@ async function buildScripts() {
     }),
   );
 
-  const css = runCommand("tailwindcss", ["-o", "-"], {
-    captureOutput: true,
-  }).then((result) => {
+  const css = runCommand(
+    "tailwindcss",
+    ["-i", CONFIG.tailwind.in, "-o", "-", ...CONFIG.tailwind.args],
+    {
+      captureOutput: true,
+    },
+  ).then((result) => {
     if (!result.stdout) {
       throw `TailwindCSS Error: ${result.stderr || "No CSS was generated"}`;
     }
 
-    return escapeCSS(result.stdout);
+    return result.stdout;
   });
 
   try {
     await Promise.all(
-      CONFIG.filesToBuild.map(async (input) => {
-        await runCommand("esbuild", [
+      CONFIG.esbuild.filesToBuild.map(async (input) => {
+        const args = [
           path.join(SRC, input),
           "--bundle",
-          "--minify",
-          "--sourcemap",
           `--outfile=${path.join(BUILD, input.replace(/\.ts$/, ".js"))}`,
           "--platform=browser",
           "--target=es2020",
           `--format=${CONFIG.svelte.format}`,
           `--global-name=${CONFIG.svelte.globalName}`,
           "--loader:.svelte=js",
-        ]);
+          ...CONFIG.esbuild.args,
+        ];
+
+        await runCommand("esbuild", args);
 
         console.log(`✅ Built ${input}`);
       }),
@@ -161,10 +175,13 @@ async function buildScripts() {
 
 async function buildCss(css: string) {
   await Promise.all(
-    CONFIG.tailwind.io.map(async (file) => {
+    CONFIG.tailwind.out.map(async (file) => {
       if (file.isReplacing) {
         let content = await fs.promises.readFile(file.path, "utf8");
-        content = content.replace('/* @import "tailwindcss"; */', css);
+        content = content.replace(
+          '/* @import "tailwindcss"; */',
+          escapeCSS(css),
+        );
         await fs.promises.writeFile(file.path, content);
       } else {
         await fs.promises.writeFile(file.path, css);

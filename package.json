@@ -7,6 +7,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "build:dev": "NODE_ENV=development node --experimental-strip-types build.ts",
     "build": "node --experimental-strip-types build.ts"
   },
   "devDependencies": {
