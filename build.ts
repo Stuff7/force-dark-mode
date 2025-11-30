@@ -11,11 +11,8 @@ const PUBLIC = path.join(ROOT, "public");
 const BUILD = path.join(ROOT, "dist");
 
 type TailwindIO = {
-  in?: string;
-  out: {
-    kind: "path" | "repl";
-    value: string;
-  };
+  isReplacing?: boolean;
+  path: string;
 };
 
 const CONFIG = {
@@ -29,10 +26,11 @@ const CONFIG = {
   tailwind: {
     io: [
       {
-        out: { kind: "path", value: path.join(BUILD, "popup.css") },
+        path: path.join(BUILD, "popup.css"),
       },
       {
-        out: { kind: "repl", value: path.join(BUILD, "content.js") },
+        isReplacing: true,
+        path: path.join(BUILD, "content.js"),
       },
     ] as TailwindIO[],
   },
@@ -121,6 +119,16 @@ async function buildScripts() {
     }),
   );
 
+  const css = runCommand("tailwindcss", ["-o", "-"], {
+    captureOutput: true,
+  }).then((result) => {
+    if (!result.stdout) {
+      throw `TailwindCSS Error: ${result.stderr || "No CSS was generated"}`;
+    }
+
+    return escapeCSS(result.stdout);
+  });
+
   try {
     await Promise.all(
       CONFIG.filesToBuild.map(async (input) => {
@@ -141,49 +149,29 @@ async function buildScripts() {
       }),
     );
   } finally {
-    await Promise.all(
+    Promise.all(
       svelteFiles.map(async (file) => {
         await fs.promises.rename(file + ogFilePostfix, file);
       }),
     );
   }
 
-  await buildCss();
+  await buildCss(await css);
 }
 
-async function buildCss() {
+async function buildCss(css: string) {
   await Promise.all(
     CONFIG.tailwind.io.map(async (file) => {
-      if (file.out.kind === "repl") {
-        const result = await runCommand("tailwindcss", ["-o", "-"], {
-          captureOutput: true,
-        });
-
-        if (!result.stdout) {
-          console.log(
-            "TailwindCSS Error:\n",
-            result.stderr || "StdErr is empty",
-          );
-          return;
-        }
-
-        let content = await fs.promises.readFile(file.out.value, "utf8");
-        content = content.replace(
-          '/* @import "tailwindcss"; */',
-          escapeCSS(result.stdout),
-        );
-        await fs.promises.writeFile(file.out.value, content);
+      if (file.isReplacing) {
+        let content = await fs.promises.readFile(file.path, "utf8");
+        content = content.replace('/* @import "tailwindcss"; */', css);
+        await fs.promises.writeFile(file.path, content);
       } else {
-        await runCommand(
-          "tailwindcss",
-          file.in
-            ? ["-i", file.in, "-o", file.out.value]
-            : ["-o", file.out.value],
-        );
+        await fs.promises.writeFile(file.path, css);
       }
 
       console.log(
-        `✅ TailwindCSS compiled to ${path.relative(ROOT, file.out.value)}`,
+        `✅ TailwindCSS compiled to ${path.relative(ROOT, file.path)}`,
       );
     }),
   );
