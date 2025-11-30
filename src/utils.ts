@@ -1,6 +1,18 @@
+export type Config = {
+  css: {
+    invert: number;
+    brightness: number;
+    contrast: number;
+    hueRotate: number;
+    saturation: number;
+    preserveImages: boolean;
+  };
+};
+
 export type Storage = {
   sites: string[];
   blacklists: Record<string, string[]>;
+  configs: Record<string, Config>;
   commandKey: string;
 };
 
@@ -23,6 +35,24 @@ export function getBlacklist(
   return blacklists[host];
 }
 
+export function getConfig(
+  configs: Storage["configs"],
+  host = urlToID(location),
+) {
+  if (!configs[host])
+    configs[host] = {
+      css: {
+        brightness: 100,
+        contrast: 100,
+        hueRotate: 0,
+        invert: 0,
+        preserveImages: true,
+        saturation: 100,
+      },
+    };
+  return configs[host];
+}
+
 type StorageResult<T> = {
   [K in keyof T]: T[K];
 };
@@ -31,6 +61,7 @@ const defaultStorage: {
   [K in keyof Storage]: () => Storage[K];
 } = {
   blacklists: () => ({}),
+  configs: () => ({}),
   sites: () => [],
   commandKey: () => "",
 };

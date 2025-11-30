@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SiteConfig from "./SiteConfig.svelte";
   import {
     debounce,
     fetchBrowserStorage,
@@ -25,6 +26,7 @@
 
   const urlID = urlToID(url);
 
+  let configIsVisible = $state(false);
   let sitesText = $state(props.sites.join("\n\n"));
   let blacklist = $state(props.blacklist);
   let shortcutStatus = $state(`Toggle with: (${initialShortcut})`);
@@ -205,69 +207,88 @@
     >
       Toggle <strong>{isDarkModeOn ? "OFF" : "ON"}</strong>
     </button>
+    <button
+      class="py-1"
+      class:primary={configIsVisible}
+      class:secondary={!configIsVisible}
+      onclick={() => (configIsVisible = !configIsVisible)}
+    >
+      <span class="text-bg bg-white">⚙️</span>
+    </button>
   </h1>
 
-  <button
-    onclick={handleShortcutClick}
-    class="block w-full p-2.5 mb-1.5 border-none rounded-md bg-zinc-700 text-zinc-200 text-sm cursor-pointer transition-colors hover:bg-zinc-600"
-  >
-    🎹 Set Keyboard Shortcut
-  </button>
+  {#if configIsVisible}
+    <SiteConfig />
+  {:else}
+    <button
+      onclick={handleShortcutClick}
+      class="block w-full p-2.5 mb-1.5 border-none rounded-md bg-zinc-700 text-zinc-200 text-sm cursor-pointer transition-colors hover:bg-zinc-600"
+    >
+      <span class="text-bg bg-white">🔑 Set Keyboard Shortcut</span>
+    </button>
 
-  <div class="text-sm text-zinc-300 mb-2.5">{shortcutStatus}</div>
+    <div class="text-sm text-zinc-300 mb-2.5">{shortcutStatus}</div>
 
-  <textarea
-    bind:value={sitesText}
-    oninput={handleSitesInput}
-    onblur={saveSites}
-    class="w-full h-30 mt-2.5 p-2 rounded-md border border-zinc-600 bg-zinc-750 text-zinc-200 resize-y font-mono text-xs"
-    placeholder="Sites list..."
-  ></textarea>
+    <textarea
+      bind:value={sitesText}
+      oninput={handleSitesInput}
+      onblur={saveSites}
+      class="w-full h-30 mt-2.5 p-2 rounded-md border border-zinc-600 bg-zinc-750 text-zinc-200 resize-y font-mono text-xs"
+      placeholder="Sites list..."
+    ></textarea>
 
-  <p class="text-sm text-zinc-400 mt-1">{sitesStatus}</p>
+    <p class="text-sm text-zinc-400 mt-1">{sitesStatus}</p>
 
-  <div class="flex flex-col gap-3">
-    {#if blacklist.length}
-      <h2
-        class="text-lg font-bold tracking-wide text-zinc-200 uppercase border-b border-zinc-700 pb-1"
-      >
-        Blacklist
-      </h2>
-    {/if}
-    <ul class="flex flex-col gap-2 overflow-auto max-h-48 pr-1">
-      {#each blacklist as selector, i (selector)}
-        <li
-          class="group cursor-help flex shrink-0 items-center justify-between gap-3 rounded-sm bg-gradient-to-r from-zinc-900 to-zinc-700 text-zinc-200 shadow-md border border-zinc-600 hover:border-red-500/70 hover:shadow-red-500/30 transition-all overflow-hidden"
-          onpointerenter={() =>
-            sendBrowserMessage(tabId, { event: "highlightSelector", selector })}
-          onpointerleave={() =>
-            sendBrowserMessage(tabId, { event: "highlightSelector" })}
+    <div class="flex flex-col gap-3">
+      {#if blacklist.length}
+        <h2
+          class="text-lg font-bold tracking-wide text-zinc-200 uppercase border-b border-zinc-700 pb-1"
         >
-          <span
-            class="grow px-2 py-1 truncate text-sm font-mono tracking-tight"
-            title={selector}
+          Blacklist
+        </h2>
+      {/if}
+      <ul class="flex flex-col gap-2 overflow-auto max-h-48 pr-1">
+        {#each blacklist as selector, i (selector)}
+          <li
+            class="group cursor-help flex shrink-0 items-center justify-between gap-3 rounded-sm bg-gradient-to-r from-zinc-900 to-zinc-700 text-zinc-200 shadow-md border border-zinc-600 hover:border-red-500/70 hover:shadow-red-500/30 transition-all overflow-hidden"
+            onpointerenter={() =>
+              sendBrowserMessage(tabId, {
+                event: "highlightSelector",
+                selector,
+              })}
+            onpointerleave={() =>
+              sendBrowserMessage(tabId, { event: "highlightSelector" })}
           >
-            {selector}
-          </span>
-          <button
-            class="flex items-center justify-center px-2 py-1 text-sm font-bold
+            <span
+              class="grow px-2 py-1 truncate text-sm font-mono tracking-tight"
+              title={selector}
+            >
+              {selector}
+            </span>
+            <button
+              class="flex items-center justify-center px-2 py-1 text-sm font-bold
                  bg-red-600 hover:bg-red-500 active:bg-red-700 text-white shadow cursor-pointer
                  transition-all group-hover:scale-105 group-hover:shadow-red-500/40"
-            onclick={() => removeBlacklistItem(i)}
-          >
-            ✕
-          </button>
-        </li>
-      {/each}
-    </ul>
-  </div>
+              onclick={() => removeBlacklistItem(i)}
+            >
+              ✕
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </div>
 
-  <p class="text-sm text-zinc-400 mt-1">{blacklistStatus}</p>
+    <p class="text-sm text-zinc-400 mt-1">{blacklistStatus}</p>
 
-  <button
-    onclick={handleZapClick}
-    class="block w-full p-2.5 mt-1.5 border-none rounded-md bg-zinc-700 text-zinc-200 text-sm cursor-pointer transition-colors hover:bg-zinc-600"
-  >
-    {inZapMode ? "⚡ Exit Zap Mode" : "⚡ Enter Zap Mode"}
-  </button>
+    <button
+      onclick={handleZapClick}
+      class="w-full mt-1.5 border-none text-sm"
+      class:primary={!inZapMode}
+      class:danger={inZapMode}
+    >
+      <span class="text-bg bg-white">
+        {inZapMode ? "⚡ Exit Zap Mode" : "⚡ Enter Zap Mode"}
+      </span>
+    </button>
+  {/if}
 </div>
