@@ -1,16 +1,9 @@
 import path from "path";
 import fs from "fs";
-import esbuild, {
-  type Plugin,
-  type PluginBuild,
-  type BuildOptions,
-} from "esbuild";
-import webExt from "web-ext";
-import postcss from "postcss";
-import tailwindcss from "@tailwindcss/postcss";
 import { compile } from "svelte/compiler";
 import { cp } from "node:fs/promises";
 import { escapeCSS } from "./src/utils.ts";
+import { spawn } from "child_process";
 
 const ROOT = process.cwd();
 const SRC = path.join(ROOT, "src");
@@ -27,11 +20,10 @@ type TailwindIO = {
 
 const CONFIG = {
   filesToBuild: ["background.ts", "content.ts", "popup.ts"],
-  webExt: {
+
+  extension: {
     artifactsDir: BUILD,
-    overwriteDest: true,
     filename: "dark-mode.xpi",
-    sourceDir: BUILD,
   },
 
   tailwind: {
@@ -43,23 +35,17 @@ const CONFIG = {
         out: { kind: "repl", value: path.join(BUILD, "content.js") },
       },
     ] as TailwindIO[],
-    contentGlobs: ["**/*.svelte", "**/*.html"].map((glob) =>
-      path.join(SRC, glob),
-    ),
   },
 
   svelte: {
-    entryPoint: path.join(SRC, "main.ts"),
-    outputBundle: path.join(BUILD, "bundle.js"),
     globalName: "app",
-    format: "iife" as BuildOptions["format"],
-    minify: true,
-    sourcemap: true,
+    format: "iife",
   },
 };
 
-async function ensureDir(dir: string) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+function rmrf(dir: string) {
+  fs.rmSync(BUILD, { recursive: true });
+  fs.mkdirSync(dir, { recursive: true });
 }
 
 async function copyPublicContents() {
@@ -77,94 +63,218 @@ async function copyPublicContents() {
   console.log(`✅ Copied contents of public folder to build`);
 }
 
-async function buildScripts() {
-  for (const file of CONFIG.filesToBuild) {
-    await esbuild.build({
-      entryPoints: [path.join(SRC, file)],
-      bundle: true,
-      minify: CONFIG.svelte.minify,
-      sourcemap: CONFIG.svelte.sourcemap,
-      outfile: path.join(BUILD, file.replace(/\.ts$/, ".js")),
-      platform: "browser",
-      target: ["es2020"],
-      plugins: [sveltePlugin],
-      format: CONFIG.svelte.format,
-      globalName: CONFIG.svelte.globalName,
+async function getAllSvelteFiles(dir: string) {
+  const files: string[] = [];
+
+  async function walk(currentDir: string) {
+    const entries = await fs.promises.readdir(currentDir, {
+      withFileTypes: true,
     });
-    console.log(`✅ Built ${file}`);
+
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile() && entry.name.endsWith(".svelte")) {
+        files.push(fullPath);
+      }
+    }
   }
+
+  await walk(dir);
+  return files;
 }
 
-async function buildExtension() {
-  await webExt.cmd.build(CONFIG.webExt, { shouldExitProgram: false });
-  console.log(`✅ Extension packaged to ${CONFIG.webExt.filename}`);
+async function compileSvelteFile(path: string) {
+  const source = await fs.promises.readFile(path, "utf8");
+  const { js, warnings } = compile(source, {
+    filename: path,
+    generate: "client",
+  });
+
+  if (warnings.length) {
+    for (const warning of warnings) {
+      console.warn(warning.code);
+      if (warning.filename && warning.position) {
+        console.log(
+          `${warning.filename}:${warning.position[0]}:${warning.position[1]}`,
+        );
+      }
+      console.warn(warning.stack);
+      console.warn(warning.message);
+    }
+  }
+
+  return js.code;
+}
+
+async function buildScripts() {
+  const svelteFiles = await getAllSvelteFiles(SRC);
+  const ogFilePostfix = ".og";
+
+  await Promise.all(
+    svelteFiles.map(async (file) => {
+      const compiledJS = await compileSvelteFile(file);
+      await fs.promises.rename(file, file + ogFilePostfix);
+      await fs.promises.writeFile(file, compiledJS);
+    }),
+  );
+
+  try {
+    await Promise.all(
+      CONFIG.filesToBuild.map(async (input) => {
+        await runCommand("esbuild", [
+          path.join(SRC, input),
+          "--bundle",
+          "--minify",
+          "--sourcemap",
+          `--outfile=${path.join(BUILD, input.replace(/\.ts$/, ".js"))}`,
+          "--platform=browser",
+          "--target=es2020",
+          `--format=${CONFIG.svelte.format}`,
+          `--global-name=${CONFIG.svelte.globalName}`,
+          "--loader:.svelte=js",
+        ]);
+
+        console.log(`✅ Built ${input}`);
+      }),
+    );
+  } finally {
+    await Promise.all(
+      svelteFiles.map(async (file) => {
+        await fs.promises.rename(file + ogFilePostfix, file);
+      }),
+    );
+  }
+
+  await buildCss();
+}
+
+async function buildCss() {
+  await Promise.all(
+    CONFIG.tailwind.io.map(async (file) => {
+      if (file.out.kind === "repl") {
+        const result = await runCommand("tailwindcss", ["-o", "-"], {
+          captureOutput: true,
+        });
+
+        if (!result.stdout) {
+          console.log(
+            "TailwindCSS Error:\n",
+            result.stderr || "StdErr is empty",
+          );
+          return;
+        }
+
+        let content = await fs.promises.readFile(file.out.value, "utf8");
+        content = content.replace(
+          '/* @import "tailwindcss"; */',
+          escapeCSS(result.stdout),
+        );
+        await fs.promises.writeFile(file.out.value, content);
+      } else {
+        await runCommand(
+          "tailwindcss",
+          file.in
+            ? ["-i", file.in, "-o", file.out.value]
+            : ["-o", file.out.value],
+        );
+      }
+
+      console.log(
+        `✅ TailwindCSS compiled to ${path.relative(ROOT, file.out.value)}`,
+      );
+    }),
+  );
+}
+
+async function packageExtension() {
+  const files = fs
+    .readdirSync(BUILD)
+    .filter((f) => f !== CONFIG.extension.filename);
+
+  await runCommand("bsdtar", [
+    "-C",
+    CONFIG.extension.artifactsDir,
+    "--format=zip",
+    "--options=compression-level=9",
+    "-cf",
+    path.join(BUILD, CONFIG.extension.filename),
+    ...files,
+  ]);
+  console.log(`✅ Extension packaged to ${CONFIG.extension.filename}`);
+}
+
+export interface RunCommandOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  captureOutput?: boolean;
+}
+
+export async function runCommand(
+  cmd: string,
+  args: string[] = [],
+  options: RunCommandOptions = {},
+): Promise<{ code: number; stdout?: string; stderr?: string }> {
+  return new Promise((resolve, reject) => {
+    const { captureOutput, cwd, env } = options;
+    const id = `${cmd} ${args.join(" ")}`;
+
+    const child = spawn(cmd, args, {
+      cwd,
+      env: env ?? process.env,
+      stdio: captureOutput
+        ? ["inherit", "pipe", "pipe"]
+        : ["inherit", "inherit", "inherit"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    if (captureOutput) {
+      child.stdout!.on("data", (chunk) => {
+        stdout += chunk.toString();
+      });
+
+      child.stderr!.on("data", (chunk) => {
+        stderr += chunk.toString();
+      });
+    }
+
+    child.on("error", (err) => reject(err));
+
+    child.on("close", (code) => {
+      if (code === null) {
+        return reject(
+          new Error(`[${id}] Process terminated without exit code`),
+        );
+      }
+      if (code !== 0) {
+        return reject(
+          new Error(`[${id}] Process terminated with code ${code}\n${stderr}`),
+        );
+      }
+
+      resolve({
+        code,
+        stdout: captureOutput ? stdout : undefined,
+        stderr: captureOutput ? stderr : undefined,
+      });
+    });
+  });
 }
 
 async function runBuild() {
-  await ensureDir(BUILD);
-  await copyPublicContents();
-  await buildScripts();
-  await buildTailwind();
-  await buildExtension();
-  console.log("🎉 Build complete!");
+  const msg = "🎉 Build complete";
+  console.time(msg);
+  rmrf(BUILD);
+  await Promise.all([copyPublicContents(), buildScripts()]);
+  await packageExtension();
+  console.timeEnd(msg);
 }
 
 runBuild().catch((err) => {
   console.error("💥 Build failed:", err);
   process.exit(1);
 });
-
-async function buildTailwind(): Promise<void> {
-  for (const file of CONFIG.tailwind.io) {
-    const cssInput = file.in
-      ? await fs.promises.readFile(file.in, "utf8")
-      : '@import "tailwindcss";';
-
-    const isRepl = file.out.kind === "repl";
-    const result = await postcss([
-      tailwindcss({
-        content: CONFIG.tailwind.contentGlobs,
-      } as any),
-    ]).process(cssInput, {
-      from: file.in || SRC,
-      to: isRepl ? BUILD : file.out.value,
-      map: false,
-    });
-
-    let content = result.css;
-    if (isRepl) {
-      content = await fs.promises.readFile(file.out.value, "utf8");
-      content = content.replace(
-        '/* @import "tailwindcss"; */',
-        escapeCSS(result.css),
-      );
-    }
-    await fs.promises.writeFile(file.out.value, content);
-
-    console.log(
-      `✅ TailwindCSS compiled to ${path.relative(ROOT, file.out.value)}`,
-    );
-  }
-}
-
-const sveltePlugin: Plugin = {
-  name: "svelte",
-  setup(build: PluginBuild) {
-    build.onLoad({ filter: /\.svelte$/ }, async (args) => {
-      const source = await fs.promises.readFile(args.path, "utf8");
-      const { js, warnings } = compile(source, {
-        filename: args.path,
-        generate: "client",
-      });
-      if (warnings.length) {
-        for (const warning of warnings) {
-          console.warn(warning);
-        }
-      }
-      return {
-        contents: js.code,
-        loader: "js",
-      };
-    });
-  },
-};

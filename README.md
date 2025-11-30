@@ -7,6 +7,9 @@ A browser extension that inverts site colors to provide a dark mode.
 ## Requirements
 
 - [Node.js](https://nodejs.org/) **22.x**
+- [tailwindcss in PATH](https://github.com/tailwindlabs/tailwindcss/releases) **4.1.17**
+- [esbuild in PATH](https://esbuild.github.io/getting-started/#download-a-build) **0.27.x**
+- bsdtar in PATH
 
 ---
 
