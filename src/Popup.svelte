@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { slide } from "svelte/transition";
   import {
     debounce,
     fetchBrowserStorage,
@@ -239,7 +238,6 @@
       {#each blacklist as selector, i (selector)}
         <li
           class="group cursor-help flex shrink-0 items-center justify-between gap-3 rounded-sm bg-gradient-to-r from-zinc-900 to-zinc-700 text-zinc-200 shadow-md border border-zinc-600 hover:border-red-500/70 hover:shadow-red-500/30 transition-all overflow-hidden"
-          transition:slide={{ axis: "x", duration: 100 }}
           onpointerenter={() =>
             sendBrowserMessage(tabId, { event: "highlightSelector", selector })}
           onpointerleave={() =>

@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@layer base {
+  html,
+  body {
+    @apply text-sm accent-amber-300 bg-zinc-900 text-zinc-50 overflow-auto;
+    background: linear-gradient(to bottom right, #09342f, #2e1f3a, #0a0a0f 120%);
+  }
+
+  * {
+    scrollbar-color: #1f6b63 #0a0a0f;
+  }
+
+  ::selection {
+    @apply bg-amber-300 text-zinc-800;
+  }
+
+  :disabled {
+    @apply opacity-25 cursor-not-allowed;
+  }
+
+  :invalid {
+    @apply outline-rose-500!;
+  }
+
+  button {
+    @apply btn-base;
+  }
+
+  input[type="number"] {
+    appearance: textfield;
+
+    &::-webkit-inner-spin-button,
+    &::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+  }
+}
+
+@utility btn-base {
+  @apply text-center disabled:opacity-50 disabled:bg-zinc-500! disabled:cursor-not-allowed;
+  @apply cursor-pointer rounded-lg font-medium transition-colors;
+
+  &:not(.compact) {
+    @apply px-4 py-2;
+  }
+
+  &.primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white;
+  }
+
+  &.danger {
+    @apply bg-rose-400 hover:bg-rose-300 text-white;
+  }
+}
+
+@utility text-bg {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}

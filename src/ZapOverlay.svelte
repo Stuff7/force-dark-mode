@@ -9,6 +9,7 @@
     getUniqueAttributes,
     getUniqueClasses,
     onBrowserMessage,
+    onStorageChange,
     setBrowserStorage,
     toggleSite,
     urlToID,
@@ -23,6 +24,17 @@
   let selectorValue = $state("");
   let showEditor = $state(false);
 
+  let blacklists = $state.raw<Record<string, string[]>>({});
+  onStorageChange((changes) => {
+    if (changes.blacklists) {
+      blacklists = changes.blacklists.newValue;
+      popupHighlights = [];
+    }
+  });
+  let blacklist = $derived(getBlacklist(blacklists));
+  fetchBrowserStorage("blacklists").then((r) => (blacklists = r.blacklists));
+  let selectorInBlacklist = $derived(blacklist.includes(selectorValue));
+
   let dragging = $state(false);
   let dragX = $state(0);
   let dragY = $state(0);
@@ -36,6 +48,7 @@
   let popupHighlights = $state<DOMRect[]>([]);
 
   let pickedElement: HTMLElement | undefined;
+  let hoveredInBlacklist = $state(false);
   let matchedElems: NodeListOf<Element> | undefined;
 
   function setDragPosition(x: number, y: number) {
@@ -85,6 +98,12 @@
     this.style.pointerEvents = "none";
     const el = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement;
     this.style.pointerEvents = "auto";
+
+    hoveredInBlacklist = blacklist.some((s) => {
+      const matches = document.querySelectorAll(s);
+      return [...matches].includes(el);
+    });
+
     return el;
   }
 
@@ -156,9 +175,13 @@
 
   async function addToBlacklist(ev: SubmitEvent) {
     ev.preventDefault();
-    const { blacklists } = await fetchBrowserStorage("blacklists");
-    getBlacklist(blacklists).push(selectorValue);
-    await setBrowserStorage({ blacklists });
+    blacklists = (await fetchBrowserStorage("blacklists")).blacklists;
+    blacklist = getBlacklist(blacklists);
+
+    if (!blacklist.includes(selectorValue)) {
+      blacklist.push(selectorValue);
+      await setBrowserStorage({ blacklists });
+    }
   }
 
   function tweakSpecificity() {
@@ -500,6 +523,11 @@
   })();
 
   const hlClasses = "fixed outline outline-solid outline-2 pointer-events-none";
+  const hlColor = $derived(
+    hoveredInBlacklist
+      ? "bg-red-400/50 outline-red-400"
+      : "bg-blue-400/50 outline-blue-400",
+  );
   const hlStyle = (hl: DOMRect) =>
     `left: ${hl.x}px; top: ${hl.y}px; width: ${hl.width}px; height: ${hl.height}px;`;
 </script>
@@ -521,13 +549,11 @@
       >Press <strong>Escape</strong> to exit zap mode.</em
     >
 
-    <div
-      class="{hlClasses} z-2 bg-blue-400/50 outline-blue-400"
-      style={hlStyle(zapHighlight)}
-    >
+    <div class="{hlClasses} z-2 {hlColor}" style={hlStyle(zapHighlight)}>
       <strong
         class="absolute top-full left-0 text-white bg-black bg-opacity-75 px-1 text-sm truncate text-ellipsis max-w-full"
       >
+        {hoveredInBlacklist ? "🚫 " : ""}
         {selectedText}
       </strong>
 
@@ -541,7 +567,7 @@
         >
           <button
             type="button"
-            class="h-6 w-6 self-end bg-red-500 hover:bg-red-600 rounded text-white cursor-pointer"
+            class="danger self-end compact h-6 w-6"
             onclick={closeEditor}
           >
             ×
@@ -566,11 +592,12 @@
             oninput={highlightElems}
           ></textarea>
 
-          <button
-            type="submit"
-            class="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded cursor-pointer"
-          >
-            Add To Blacklist
+          <button type="submit" disabled={selectorInBlacklist} class="primary">
+            <span class="text-bg bg-white">
+              {selectorInBlacklist
+                ? "🚫 Already In Blacklist"
+                : "Add To Blacklist"}
+            </span>
           </button>
         </form>
       {/if}
