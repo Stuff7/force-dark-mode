@@ -200,9 +200,9 @@
   >
     <span>Dark Mode</span>
     <button
-      class="grow px-2 py-1 text-base text-zinc-900 cursor-pointer rounded-sm"
-      class:bg-green-500={!isDarkModeOn}
-      class:bg-rose-300={isDarkModeOn}
+      class="grow py-1 text-base"
+      class:ok={!isDarkModeOn}
+      class:danger={isDarkModeOn}
       onclick={() => sendBrowserMessage(tabId, { event: "toggleDarkMode" })}
     >
       Toggle <strong>{isDarkModeOn ? "OFF" : "ON"}</strong>
@@ -218,7 +218,7 @@
   </h1>
 
   {#if configIsVisible}
-    <SiteConfig />
+    <SiteConfig id={urlID} />
   {:else}
     <button
       onclick={handleShortcutClick}

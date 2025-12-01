@@ -36,6 +36,48 @@
       margin: 0;
     }
   }
+
+  input[type="range"] {
+    @apply flex-1 h-3 rounded-full bg-gray-700 appearance-none cursor-pointer;
+
+    &::-webkit-slider-thumb {
+      @apply w-6 h-6 rounded-full bg-blue-500 cursor-pointer transition-colors;
+      appearance: none;
+      margin-top: -0.75rem;
+    }
+
+    &::-webkit-slider-thumb:hover {
+      @apply bg-blue-400;
+    }
+
+    &::-moz-range-thumb {
+      @apply w-6 h-6 rounded-full bg-blue-500 cursor-pointer;
+      border: 0;
+    }
+
+    &::-moz-range-track {
+      @apply h-3 rounded-full bg-gray-700;
+    }
+  }
+
+  input[type="checkbox"] {
+    @apply w-6 h-6 rounded cursor-pointer border-gray-400 border-2 bg-white transition-colors;
+
+    padding: 0.25rem;
+  }
+
+  input[type="checkbox"]:checked {
+    @apply bg-blue-500 border-blue-500;
+  }
+
+  input[type="checkbox"]:hover,
+  input[type="checkbox"]:focus {
+    @apply ring-2 ring-blue-300 outline-none;
+  }
+
+  input[type="checkbox"]:disabled {
+    @apply bg-gray-200 border-gray-300 cursor-not-allowed;
+  }
 }
 
 @utility btn-base {
@@ -51,11 +93,15 @@
   }
 
   &.secondary {
-    @apply bg-slate-700 hover:bg-slate-600 text-white;
+    @apply bg-slate-600 hover:bg-slate-700 text-white;
+  }
+
+  &.ok {
+    @apply bg-emerald-600 hover:bg-emerald-700 text-white;
   }
 
   &.danger {
-    @apply bg-rose-400 hover:bg-rose-300 text-white;
+    @apply bg-red-400 hover:bg-red-500 text-white;
   }
 }
 

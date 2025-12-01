@@ -3,211 +3,105 @@
     Config,
     fetchBrowserStorage,
     getConfig,
-    onStorageChange,
+    getInvertConfigPreset,
+    getDefaultConfig,
+    getDimmedConfigPreset,
     setBrowserStorage,
+    getSolarizedPreset,
+    getHighContrastPreset,
+    getNightOwlPreset,
+    getSepiaMoodPreset,
+    getUltraDimPreset,
+    numericInput,
   } from "./utils";
 
-  // TODO: make config reactive
-  let configs = $state.raw<Record<string, Config>>({});
-  onStorageChange((changes) => {
-    if (changes.configs) {
-      configs = changes.configs.newValue;
-    }
+  const { id }: { id: string } = $props();
+
+  let storedConfigs: Record<string, Config> = {};
+  let userPreset = getDefaultConfig();
+  let cfg = $state(userPreset);
+
+  fetchBrowserStorage("configs").then((r) => {
+    storedConfigs = r.configs;
+    cfg = getConfig(storedConfigs, id);
+    userPreset = cfg;
   });
-  fetchBrowserStorage("configs").then((r) => (configs = r.configs));
-  let cfg = $derived(getConfig(configs).css);
 
-  function applyDark() {
-    cfg.invert = 100;
-    cfg.brightness = 100;
-    cfg.contrast = 100;
-    cfg.hueRotate = 180;
-    cfg.saturation = 100;
-    cfg.preserveImages = true;
-    setBrowserStorage({ configs });
-  }
+  $effect(() => {
+    storedConfigs[id] = cfg;
+    setBrowserStorage({ configs: storedConfigs });
+  });
 
-  function applyDimmed() {
-    cfg.invert = 0;
-    cfg.brightness = 80;
-    cfg.contrast = 90;
-    cfg.hueRotate = 0;
-    cfg.saturation = 100;
-    cfg.preserveImages = false;
-    setBrowserStorage({ configs });
-  }
+  const sliders: {
+    label: string;
+    key: keyof Config["css"];
+    min: number;
+    max: number;
+    unit?: string;
+  }[] = [
+    { label: "Inversion Amount", key: "invert", min: 0, max: 100 },
+    { label: "Brightness", key: "brightness", min: 50, max: 150 },
+    { label: "Contrast", key: "contrast", min: 50, max: 150 },
+    { label: "Hue Rotate", key: "hueRotate", min: 0, max: 360, unit: "°" },
+    { label: "Saturation", key: "saturation", min: 0, max: 200 },
+  ];
 
-  function applyLight() {
-    cfg.invert = 0;
-    cfg.brightness = 100;
-    cfg.contrast = 100;
-    cfg.hueRotate = 0;
-    cfg.saturation = 100;
-    cfg.preserveImages = false;
-    setBrowserStorage({ configs });
-  }
-
-  function reset() {
-    applyLight();
-  }
+  const presets: { name: string; apply: () => Config; class?: string }[] = [
+    { name: "Simple Invert", apply: getInvertConfigPreset },
+    { name: "Dimmed", apply: getDimmedConfigPreset },
+    { name: "Solarized", apply: getSolarizedPreset },
+    { name: "High Contrast", apply: getHighContrastPreset },
+    { name: "Night Owl", apply: getNightOwlPreset },
+    { name: "Sepia Mood", apply: getSepiaMoodPreset },
+    { name: "Ultra Dim", apply: getUltraDimPreset },
+    { name: "Reset", apply: () => userPreset, class: "primary" },
+  ];
 </script>
 
-<div class="w-full max-w-sm font-sans">
-  <h2 class="text-bg text-lg font-semibold bg-gray-100 mb-4">
-    ✏️ Per Site Config
-  </h2>
+<div class="w-full max-w-sm font-sans space-y-2">
+  <h2 class="text-bg text-lg font-semibold bg-gray-100">✏️ Per Site Config</h2>
 
-  <div class="mb-4">
-    <label for="invert" class="block mb-1.5 text-gray-300 font-medium text-xs">
-      Inversion Amount
+  {#each sliders as s}
+    <label class="grid grid-cols-[1fr_auto] gap-y-1 gap-x-2 items-center">
+      <div class="text-gray-300 font-medium text-xs col-span-2">
+        {s.label}
+      </div>
+      <input type="range" bind:value={cfg.css[s.key]} min={s.min} max={s.max} />
+      <label class="min-w-10 text-right text-gray-400 text-xs font-medium">
+        <input
+          class="text-right w-[3ch] focus:outline-0 focus:text-amber-500 focus:font-bold"
+          type="number"
+          bind:value={cfg.css[s.key]}
+          onfocus={(ev) => ev.currentTarget.select()}
+          {@attach numericInput()}
+        />
+        {s.unit ?? "%"}
+      </label>
     </label>
-    <div class="flex items-center gap-2">
-      <input
-        type="range"
-        id="invert"
-        bind:value={cfg.invert}
-        min="0"
-        max="100"
-        class="flex-1 h-1 rounded-full bg-gray-700 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:hover:bg-blue-400 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-0"
-      />
-      <span class="min-w-10 text-right text-gray-400 text-xs font-medium"
-        >{cfg.invert}%</span
-      >
-    </div>
-  </div>
+  {/each}
 
-  <div class="mb-4">
-    <label
-      for="brightness"
-      class="block mb-1.5 text-gray-300 font-medium text-xs"
-    >
-      Brightness
-    </label>
-    <div class="flex items-center gap-2">
-      <input
-        type="range"
-        id="brightness"
-        bind:value={cfg.brightness}
-        min="50"
-        max="150"
-        class="flex-1 h-1 rounded-full bg-gray-700 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:hover:bg-blue-400 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-0"
-      />
-      <span class="min-w-10 text-right text-gray-400 text-xs font-medium"
-        >{cfg.brightness}%</span
-      >
-    </div>
-  </div>
-
-  <div class="mb-4">
-    <label
-      for="contrast"
-      class="block mb-1.5 text-gray-300 font-medium text-xs"
-    >
-      Contrast
-    </label>
-    <div class="flex items-center gap-2">
-      <input
-        type="range"
-        id="contrast"
-        bind:value={cfg.contrast}
-        min="50"
-        max="150"
-        class="flex-1 h-1 rounded-full bg-gray-700 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:hover:bg-blue-400 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-0"
-      />
-      <span class="min-w-10 text-right text-gray-400 text-xs font-medium"
-        >{cfg.contrast}%</span
-      >
-    </div>
-  </div>
-
-  <div class="mb-4">
-    <label for="hue" class="block mb-1.5 text-gray-300 font-medium text-xs">
-      Hue Rotate
-    </label>
-    <div class="flex items-center gap-2">
-      <input
-        type="range"
-        id="hue"
-        bind:value={cfg.hueRotate}
-        min="0"
-        max="360"
-        class="flex-1 h-1 rounded-full bg-gray-700 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:hover:bg-blue-400 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-0"
-      />
-      <span class="min-w-10 text-right text-gray-400 text-xs font-medium"
-        >{cfg.hueRotate}°</span
-      >
-    </div>
-  </div>
-
-  <div class="mb-4">
-    <label
-      for="saturation"
-      class="block mb-1.5 text-gray-300 font-medium text-xs"
-    >
-      Saturation
-    </label>
-    <div class="flex items-center gap-2">
-      <input
-        type="range"
-        id="saturation"
-        bind:value={cfg.saturation}
-        min="0"
-        max="200"
-        class="flex-1 h-1 rounded-full bg-gray-700 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:hover:bg-blue-400 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-0"
-      />
-      <span class="min-w-10 text-right text-gray-400 text-xs font-medium"
-        >{cfg.saturation}%</span
-      >
-    </div>
-  </div>
-
-  <div class="flex items-center gap-2 mt-2 mb-3">
-    <input
-      type="checkbox"
-      id="preserve"
-      bind:checked={cfg.preserveImages}
-      class="w-3.5 h-3.5 cursor-pointer"
-    />
-    <label
-      for="preserve"
-      class="cursor-pointer text-gray-300 text-xs font-normal"
-    >
+  <label class="flex items-center gap-2">
+    <input type="checkbox" bind:checked={cfg.css.preserveImages} />
+    <span class="cursor-pointer text-gray-300 text-xs font-normal">
       Preserve images/videos
-    </label>
-  </div>
+    </span>
+  </label>
 
-  <div class="flex gap-2 flex-wrap">
-    <button
-      onclick={applyDark}
-      class="flex-1 min-w-20 bg-blue-600 text-white border-0 px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-all hover:bg-blue-500"
-    >
-      Dark Mode
-    </button>
-    <button
-      onclick={applyLight}
-      class="flex-1 min-w-20 bg-blue-600 text-white border-0 px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-all hover:bg-blue-500"
-    >
-      Light Mode
-    </button>
-  </div>
-  <div class="flex gap-2 flex-wrap mt-2">
-    <button
-      onclick={applyDimmed}
-      class="flex-1 min-w-20 bg-gray-700 text-white border-0 px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-all hover:bg-gray-600"
-    >
-      Dimmed
-    </button>
-    <button
-      onclick={reset}
-      class="flex-1 min-w-20 bg-gray-700 text-white border-0 px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-all hover:bg-gray-600"
-    >
-      Reset
-    </button>
+  <div class="grid grid-cols-2 gap-2">
+    {#each presets as preset}
+      <button
+        onclick={() => (cfg = preset.apply())}
+        class={preset.class ?? "secondary"}
+      >
+        {preset.name}
+      </button>
+    {/each}
   </div>
 
   <div
-    class="bg-blue-950 border-l-4 border-blue-500 p-3 rounded-md mt-3 text-blue-200 text-xs"
+    class="bg-blue-950 border-l-4 border-blue-500 p-3 rounded-md text-blue-200 text-xs"
   >
-    <strong>Tip:</strong> Try 100% inversion + 180° hue for natural dark mode!
+    <strong>Tip:</strong> Try 100% inversion + 180° hue to keep colors close to the
+    originals
   </div>
 </div>
