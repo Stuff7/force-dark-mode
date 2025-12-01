@@ -24,12 +24,20 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install Dependencies
+      - name: Install Dependencies and Binaries
         run: |
-          sudo apt-get update && sudo apt-get install -y libarchive-tools
+          sudo apt-get update && sudo apt-get install -y libarchive-tools curl
           npm ci
-          npm install -g tailwindcss@4.1.17 esbuild@0.27
-          echo "$(npm bin -g)" >> $GITHUB_PATH
+
+          mkdir -p $HOME/bin
+
+          curl -L https://github.com/tailwindlabs/tailwindcss/releases/download/v4.1.17/tailwindcss-linux-x64 -o $HOME/bin/tailwindcss
+          chmod +x $HOME/bin/tailwindcss
+
+          curl -fsSL https://esbuild.github.io/dl/v0.27.0 | sh
+          mv esbuild $HOME/bin/esbuild
+
+          echo "$HOME/bin" >> $GITHUB_PATH
 
       - name: Build Extension
         run: npm run build
