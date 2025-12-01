@@ -19,6 +19,7 @@
 
   let storedConfigs: Record<string, Config> = {};
   let userPreset = getDefaultConfig();
+  let firstRun = true;
   let cfg = $state(userPreset);
 
   fetchBrowserStorage("configs").then((r) => {
@@ -28,6 +29,11 @@
   });
 
   $effect(() => {
+    cfg;
+    if (firstRun) {
+      firstRun = false;
+      return;
+    }
     storedConfigs[id] = cfg;
     setBrowserStorage({ configs: storedConfigs });
   });
