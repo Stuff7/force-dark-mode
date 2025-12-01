@@ -50,7 +50,7 @@ const CONFIG = {
 };
 
 function rmrf(dir: string) {
-  fs.rmSync(BUILD, { recursive: true });
+  fs.rmSync(BUILD, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
 }
 
