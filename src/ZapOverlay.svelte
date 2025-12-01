@@ -3,6 +3,8 @@
     escapeCSS,
     fetchBrowserStorage,
     getBlacklist,
+    getConfig,
+    getDefaultConfig,
     getElementPath,
     getNthChild,
     getNthOfType,
@@ -25,15 +27,26 @@
   let showEditor = $state(false);
 
   let blacklists = $state.raw<Record<string, string[]>>({});
+  let blacklist = $derived(getBlacklist(blacklists));
+  let selectorInBlacklist = $derived(blacklist.includes(selectorValue));
+
+  let cfg = $state.raw(getDefaultConfig());
+
+  fetchBrowserStorage(["blacklists", "configs"]).then((r) => {
+    if (r.blacklists) blacklists = r.blacklists;
+    if (r.configs) cfg = getConfig(r.configs);
+  });
+
   onStorageChange((changes) => {
     if (changes.blacklists) {
       blacklists = changes.blacklists.newValue;
       popupHighlights = [];
     }
+
+    if (changes.configs) {
+      cfg = getConfig(changes.configs.newValue);
+    }
   });
-  let blacklist = $derived(getBlacklist(blacklists));
-  fetchBrowserStorage("blacklists").then((r) => (blacklists = r.blacklists));
-  let selectorInBlacklist = $derived(blacklist.includes(selectorValue));
 
   let dragging = $state(false);
   let dragX = $state(0);
@@ -180,6 +193,18 @@
 
     if (!blacklist.includes(selectorValue)) {
       blacklist.push(selectorValue);
+      await setBrowserStorage({ blacklists });
+    }
+  }
+
+  async function removeFromBlacklist(ev: MouseEvent) {
+    ev.preventDefault();
+    blacklists = (await fetchBrowserStorage("blacklists")).blacklists;
+    blacklist = getBlacklist(blacklists);
+
+    const idx = blacklist.indexOf(selectorValue);
+    if (idx !== -1) {
+      blacklist.splice(idx, 1);
       await setBrowserStorage({ blacklists });
     }
   }
@@ -459,29 +484,42 @@
 
   async function toggleDarkMode(enabled: boolean) {
     if (enabled) {
-      const blacklist = [
-        "img",
-        "picture",
-        "video",
-        "iframe",
-        `#${shadowId}`,
-        ...getBlacklist((await fetchBrowserStorage("blacklists")).blacklists),
-      ].join(", ");
-
-      darkModeStyle.innerHTML = `
-        html {
-          filter: invert(1) hue-rotate(180deg) !important;
-        }
-        ${blacklist} {
-          filter: invert(1) hue-rotate(180deg) !important;
-        }
-      `;
-
       document.head.appendChild(darkModeStyle);
     } else {
       darkModeStyle.remove();
     }
   }
+
+  $effect(() => {
+    const css = cfg.css;
+
+    const blacklistSelectors = [
+      ...(cfg.css.preserveImages ? ["img", "picture", "video", "iframe"] : []),
+      `#${shadowId}`,
+      ...blacklist,
+    ].join(", ");
+
+    darkModeStyle.innerHTML = `
+        html {
+          filter:
+            invert(${css.invert}%)
+            brightness(${css.brightness}%)
+            contrast(${css.contrast}%)
+            hue-rotate(${css.hueRotate}deg)
+            saturate(${css.saturation}%)
+          !important;
+        }
+
+        ${blacklistSelectors} {
+          filter:
+            invert(${css.invert}%)
+            contrast(${(100 / css.contrast) * 100}%)
+            saturate(${(100 / css.saturation) * 100}%)
+            hue-rotate(${-css.hueRotate}deg)
+          !important;
+        }
+      `;
+  });
 
   (async () => {
     const urlID = urlToID(location);
@@ -599,6 +637,12 @@
                 : "Add To Blacklist"}
             </span>
           </button>
+
+          {#if selectorInBlacklist}
+            <button type="button" onclick={removeFromBlacklist} class="danger">
+              Remove
+            </button>
+          {/if}
         </form>
       {/if}
     </div>

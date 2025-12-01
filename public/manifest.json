@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Dark Mode",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "description": "Invert site colors.",
   "permissions": ["storage", "<all_urls>"],
   "background": {
