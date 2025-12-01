@@ -19,14 +19,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: NPM Build
+      - name: Install Dependencies
         run: |
-          npm i
-          npm run build
+          sudo apt-get update && sudo apt-get install -y bsdtar
+          npm ci
+          npm install -g tailwindcss@4.1.17 esbuild@0.27
+
+      - name: Build Extension
+        run: npm run build
 
       - name: Create Release
         id: create_release
@@ -39,7 +44,7 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Upload XPI to Release
+      - name: Upload XPI to Artifact
         id: upload_xpi
         uses: actions/upload-artifact@v4
         with:
