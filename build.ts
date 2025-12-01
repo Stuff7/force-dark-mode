@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import { compile } from "svelte/compiler";
+import { compile, type CompileOptions } from "svelte/compiler";
 import { cp } from "node:fs/promises";
 import { escapeCSS } from "./src/utils.ts";
 import { spawn } from "child_process";
@@ -20,7 +20,16 @@ type TailwindIO = {
 
 const CONFIG = {
   esbuild: {
-    args: isDev ? ["--sourcemap=inline"] : ["--minify"],
+    args: isDev
+      ? ["--sourcemap=inline"]
+      : [
+          "--minify",
+          "--tree-shaking=true",
+          "--drop:console",
+          "--drop:debugger",
+          "--legal-comments=none",
+          '--define:process.env.NODE_ENV="production"',
+        ],
     filesToBuild: ["background.ts", "content.ts", "popup.ts"],
   },
 
@@ -46,6 +55,10 @@ const CONFIG = {
   svelte: {
     globalName: "app",
     format: isDev ? "esm" : "iife",
+    compileOptions: {
+      dev: isDev,
+      css: "injected",
+    } satisfies CompileOptions,
   },
 };
 
@@ -97,7 +110,7 @@ async function compileSvelteFile(path: string) {
   const { js, warnings } = compile(source, {
     filename: path,
     generate: "client",
-    dev: isDev,
+    ...CONFIG.svelte.compileOptions,
   });
 
   if (warnings.length) {
@@ -108,7 +121,7 @@ async function compileSvelteFile(path: string) {
           `${warning.filename}:${warning.position[0]}:${warning.position[1]}`,
         );
       }
-      console.warn(warning.stack);
+      console.warn(warning.stack ?? "");
       console.warn(warning.message);
     }
   }
