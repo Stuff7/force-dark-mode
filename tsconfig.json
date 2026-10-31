@@ -17,7 +17,9 @@
     "baseUrl": ".",
     "paths": {
       "dark-mode/*": ["./src/*"]
-    }
+    },
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["firefox-webext-browser"]
   },
   "include": ["src/**/*", "*.d.ts", "*.ts"],
   "exclude": ["dist", "node_modules", "**/node_modules/*"]

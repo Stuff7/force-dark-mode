@@ -302,6 +302,70 @@ export function getUniqueAttributes(
     }));
 }
 
+export function describeElement(element: Element) {
+  const tagName = element.tagName.toLowerCase();
+  const id = element.id;
+  const classes = Array.from(element.classList);
+  return { tagName, id, classes };
+}
+
+export function elementMatchesQuery(element: Element, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+
+  try {
+    if (element.matches(query)) return true;
+  } catch (_) {}
+
+  const { tagName, id, classes } = describeElement(element);
+  if (tagName.includes(q)) return true;
+  if (id.toLowerCase().includes(q)) return true;
+  if (classes.some((cls) => cls.toLowerCase().includes(q))) return true;
+
+  for (const attr of element.getAttributeNames()) {
+    if (attr === "class" || attr === "id") continue;
+    const value = element.getAttribute(attr) ?? "";
+    if (attr.toLowerCase().includes(q) || value.toLowerCase().includes(q)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export async function removeSelectorFromBlacklist(
+  selector: string,
+  host = urlToID(location),
+) {
+  const { blacklists } = await fetchBrowserStorage("blacklists");
+  const blacklist = getBlacklist(blacklists, host);
+
+  const idx = blacklist.indexOf(selector);
+  if (idx !== -1) {
+    blacklist.splice(idx, 1);
+    await setBrowserStorage({ blacklists });
+  }
+
+  return blacklists;
+}
+
+export function findMatchingBlacklistSelectors(
+  element: Element,
+  blacklist: string[],
+) {
+  return blacklist.filter((selector) => {
+    try {
+      return element.matches(selector);
+    } catch (_) {
+      return false;
+    }
+  });
+}
+
+export function elementMatchesBlacklist(element: Element, blacklist: string[]) {
+  return findMatchingBlacklistSelectors(element, blacklist).length > 0;
+}
+
 type BrowserMsg<Name extends string, T = {}> = { event: Name } & T;
 
 type BrowserEvent =

@@ -1,482 +1,416 @@
-<script lang="ts">
+<script lang="ts" module>
   import {
+    elementMatchesBlacklist,
     escapeCSS,
     fetchBrowserStorage,
+    findMatchingBlacklistSelectors,
     getBlacklist,
-    getConfig,
-    getDefaultConfig,
     getElementPath,
     getNthChild,
     getNthOfType,
     getUniqueAttributes,
     getUniqueClasses,
+    removeSelectorFromBlacklist,
+    setBrowserStorage,
+  } from "./utils";
+
+  function classesPart(classes: string[], limit?: number): string {
+    const picked = limit === undefined ? classes : classes.slice(0, limit);
+    return picked.map((cls) => `.${escapeCSS(cls)}`).join("");
+  }
+
+  function tagIdOrClasses(
+    element: Element,
+    classes: string[],
+    classLimit?: number,
+  ): string {
+    const tagName = element.tagName.toLowerCase();
+    if (element.id) return `${tagName}#${escapeCSS(element.id)}`;
+    return `${tagName}${classesPart(classes, classLimit)}`;
+  }
+
+  function pathSelector(
+    pickedElement: Element,
+    maxDepth: number,
+    classLimit: number,
+    nthChildOnLeaf: boolean,
+  ): string {
+    const path = getElementPath(pickedElement);
+    const start = Math.max(0, path.length - Math.min(path.length, maxDepth));
+
+    return path
+      .slice(start)
+      .map((element, i, slice) => {
+        let part = tagIdOrClasses(
+          element,
+          Array.from(element.classList),
+          classLimit,
+        );
+        if (nthChildOnLeaf && i === slice.length - 1 && !element.id) {
+          part += getNthChild(element);
+        }
+        return part;
+      })
+      .join(" > ");
+  }
+
+  function buildSelector(pickedElement: Element, specificity: number): string {
+    const tagName = pickedElement.tagName.toLowerCase();
+    const id = pickedElement.id;
+    const classes = Array.from(pickedElement.classList);
+    const uniqueClasses = getUniqueClasses(pickedElement);
+
+    switch (specificity) {
+      case 0:
+        return tagName;
+
+      case 1:
+        return tagIdOrClasses(pickedElement, classes, 1);
+
+      case 2:
+        return tagIdOrClasses(pickedElement, classes);
+
+      case 3: {
+        if (id) return `${tagName}#${escapeCSS(id)}`;
+
+        const uniqueAttrs = getUniqueAttributes(pickedElement);
+        let selector = tagName + classesPart(uniqueClasses);
+        if (uniqueAttrs.length > 0) {
+          const attr = uniqueAttrs[0];
+          selector += `[${escapeCSS(attr.name)}="${escapeCSS(attr.value)}"]`;
+        }
+        return selector;
+      }
+
+      case 4:
+        return (
+          tagIdOrClasses(pickedElement, uniqueClasses, 1) +
+          getNthChild(pickedElement)
+        );
+
+      case 5:
+      case 6: {
+        const childSelector =
+          specificity === 6 && !id && uniqueClasses.length === 0
+            ? tagName + getNthChild(pickedElement)
+            : tagIdOrClasses(pickedElement, uniqueClasses, 1);
+
+        const parent = pickedElement.parentElement;
+        if (!parent) return childSelector;
+
+        const parentSelector =
+          specificity === 5
+            ? tagIdOrClasses(parent, Array.from(parent.classList), 1)
+            : parent.id
+              ? `${parent.tagName.toLowerCase()}#${escapeCSS(parent.id)}`
+              : parent.tagName.toLowerCase();
+
+        return `${parentSelector} > ${childSelector}`;
+      }
+
+      case 7:
+        return pathSelector(pickedElement, 2, 1, false);
+
+      case 8:
+        return pathSelector(pickedElement, 3, 2, true);
+
+      default: {
+        const path = getElementPath(pickedElement);
+        return path
+          .map((element) => {
+            if (element.id) {
+              return `${element.tagName.toLowerCase()}#${escapeCSS(element.id)}`;
+            }
+
+            const attrs = getUniqueAttributes(element);
+            let part =
+              element.tagName.toLowerCase() +
+              classesPart(Array.from(element.classList));
+            if (attrs.length > 0) {
+              const attr = attrs[0];
+              part += `[${escapeCSS(attr.name)}="${escapeCSS(attr.value)}"]`;
+            }
+            part += getNthChild(element) + getNthOfType(element);
+            return part;
+          })
+          .join(" > ");
+      }
+    }
+  }
+
+  class ZapState {
+    inZapMode = $state(false);
+    selectedText = $state("");
+    matchCount = $state(0);
+    specificityValue = $state(8);
+    selectorValue = $state("");
+    showEditor = $state(false);
+
+    blacklists = $state.raw<Record<string, string[]>>({});
+    blacklist = $derived(getBlacklist(this.blacklists));
+    selectorInBlacklist = $derived(this.blacklist.includes(this.selectorValue));
+
+    dragging = $state(false);
+    dragX = $state(0);
+    dragY = $state(0);
+    startDragX = $state(0);
+    startDragY = $state(0);
+    endDragX = $state(0);
+    endDragY = $state(0);
+
+    zapHighlight = $state<DOMRect>(new DOMRect());
+    highlights = $state<DOMRect[]>([]);
+    popupHighlights = $state<DOMRect[]>([]);
+    inspectorHoveredElement = $state<Element>();
+    inspectorHighlight = $state<DOMRect>();
+
+    pickedElement = $state<Element>();
+    hoveredInBlacklist = $state(false);
+    matchedElems: NodeListOf<Element> | undefined;
+
+    setDragPosition(x: number, y: number) {
+      this.dragX = x;
+      this.dragY = y;
+    }
+
+    resetDragPosition(x: number, y: number) {
+      this.setDragPosition(x, y);
+      this.startDragX = x;
+      this.startDragY = y;
+      this.endDragX = x;
+      this.endDragY = y;
+    }
+
+    startDrag(el: Element, ev: PointerEvent) {
+      if (ev.target !== el || ev.button !== 0) return;
+      this.dragging = true;
+      this.startDragX = ev.pageX;
+      this.startDragY = ev.pageY;
+      this.handleDrag(ev);
+    }
+
+    handleDrag(ev: PointerEvent) {
+      if (this.dragging) {
+        this.setDragPosition(
+          this.endDragX + ev.pageX - this.startDragX,
+          this.endDragY + ev.pageY - this.startDragY,
+        );
+      }
+    }
+
+    stopDrag() {
+      this.dragging = false;
+      this.endDragX = this.dragX;
+      this.endDragY = this.dragY;
+    }
+
+    setZapMode(value: boolean) {
+      this.inZapMode = value;
+      if (!this.inZapMode) {
+        this.closeEditor();
+      }
+    }
+
+    getHoveredElement(el: HTMLElement, ev: MouseEvent) {
+      el.style.pointerEvents = "none";
+      const hovered = document.elementFromPoint(
+        ev.clientX,
+        ev.clientY,
+      ) as Element;
+      el.style.pointerEvents = "auto";
+
+      this.hoveredInBlacklist = hovered
+        ? elementMatchesBlacklist(hovered, this.blacklist)
+        : false;
+
+      return hovered;
+    }
+
+    zapElement(el: HTMLElement, ev: MouseEvent) {
+      if (this.pickedElement) return;
+      this.pickedElement = this.getHoveredElement(el, ev);
+      if (!this.pickedElement) return;
+      this.tweakSpecificity();
+      this.showEditor = true;
+
+      const rect = this.pickedElement.getBoundingClientRect();
+      let x =
+        rect.x + 350 > window.innerWidth
+          ? rect.x - Math.abs(350 - rect.width)
+          : rect.x;
+      let y =
+        rect.bottom + 250 > window.innerHeight
+          ? rect.y - 250
+          : rect.y + rect.height;
+
+      if (
+        x < 0 ||
+        x + 350 >= window.innerWidth ||
+        y < 0 ||
+        y + 250 >= window.innerHeight
+      ) {
+        x = (window.innerWidth - 350) / 2;
+        y = (window.innerHeight - 250) / 2;
+      }
+
+      this.resetDragPosition(x, y);
+    }
+
+    onScroll() {
+      if (this.pickedElement) {
+        this.zapHighlight = this.pickedElement.getBoundingClientRect();
+      }
+      if (this.inspectorHoveredElement) {
+        this.inspectorHighlight =
+          this.inspectorHoveredElement.getBoundingClientRect();
+      }
+      if (!this.matchedElems) return;
+      for (let i = 0; i < this.matchedElems.length; i++) {
+        this.highlights[i] = this.matchedElems[i].getBoundingClientRect();
+      }
+    }
+
+    highlightElems() {
+      this.removeHighlightedElems();
+
+      try {
+        this.matchedElems = document.querySelectorAll(this.selectorValue);
+        this.matchCount = this.matchedElems.length;
+        this.highlights = [...this.matchedElems].map((el) =>
+          el.getBoundingClientRect(),
+        );
+      } catch (e) {
+        this.matchCount = 0;
+      }
+    }
+
+    removeHighlightedElems() {
+      this.highlights = [];
+      this.matchedElems = undefined;
+    }
+
+    highlightZapElement(el: Element, ev: MouseEvent) {
+      if (this.pickedElement) return;
+      const hovered = this.getHoveredElement(el as HTMLElement, ev);
+      if (!hovered) return;
+
+      this.zapHighlight = hovered.getBoundingClientRect();
+      this.selectedText = [
+        hovered.tagName.toLowerCase(),
+        ...hovered.classList,
+      ].join(".");
+    }
+
+    async addToBlacklist(ev: SubmitEvent) {
+      ev.preventDefault();
+      this.blacklists = (await fetchBrowserStorage("blacklists")).blacklists;
+
+      if (!this.blacklist.includes(this.selectorValue)) {
+        this.blacklist.push(this.selectorValue);
+        await setBrowserStorage({ blacklists: this.blacklists });
+      }
+    }
+
+    async removeSelectorValueFromBlacklist(ev: MouseEvent) {
+      ev.preventDefault();
+      this.blacklists = await removeSelectorFromBlacklist(this.selectorValue);
+    }
+
+    async removeElementFromBlacklist(el: Element) {
+      const selectors = findMatchingBlacklistSelectors(el, this.blacklist);
+      let updated = this.blacklists;
+      for (const selector of selectors) {
+        updated = await removeSelectorFromBlacklist(selector);
+      }
+      this.blacklists = updated;
+    }
+
+    pickElement(el: Element) {
+      this.pickedElement = el;
+      this.zapHighlight = el.getBoundingClientRect();
+      this.selectedText = [el.tagName.toLowerCase(), ...el.classList].join(
+        ".",
+      );
+      this.tweakSpecificity();
+    }
+
+    hoverInspectorElement(el: Element | undefined) {
+      this.inspectorHoveredElement = el;
+      this.inspectorHighlight = el?.getBoundingClientRect();
+    }
+
+    tweakSpecificity() {
+      const pickedElement = this.pickedElement;
+      if (!pickedElement) return;
+
+      let selector = buildSelector(pickedElement, this.specificityValue);
+
+      if (!selector) {
+        selector = pickedElement.tagName.toLowerCase();
+      }
+
+      try {
+        const matches = document.querySelectorAll(selector);
+        if (!Array.from(matches).includes(pickedElement)) {
+          selector =
+            pickedElement.tagName.toLowerCase() + getNthChild(pickedElement);
+        }
+      } catch (e) {
+        selector = pickedElement.tagName.toLowerCase();
+      }
+
+      this.selectorValue = selector;
+      this.highlightElems();
+    }
+
+    closeEditor() {
+      this.specificityValue = 8;
+      this.pickedElement = undefined;
+      this.showEditor = false;
+      this.removeHighlightedElems();
+      this.hoverInspectorElement(undefined);
+    }
+
+    exitZapMode(ev: KeyboardEvent) {
+      if (ev.key !== "Escape") return;
+      if (this.pickedElement) return this.closeEditor();
+      this.setZapMode(false);
+    }
+  }
+
+  export const zap = new ZapState();
+</script>
+
+<script lang="ts">
+  import EditorBox from "./EditorBox.svelte";
+  import {
+    getConfig,
+    getDefaultConfig,
     onBrowserMessage,
     onStorageChange,
-    setBrowserStorage,
     toggleSite,
     urlToID,
   } from "./utils";
 
   const { shadowId }: { shadowId: string } = $props();
 
-  let inZapMode = $state(false);
-  let selectedText = $state("");
-  let matchCount = $state(0);
-  let specificityValue = $state(8);
-  let selectorValue = $state("");
-  let showEditor = $state(false);
-
-  let blacklists = $state.raw<Record<string, string[]>>({});
-  let blacklist = $derived(getBlacklist(blacklists));
-  let selectorInBlacklist = $derived(blacklist.includes(selectorValue));
-
   let cfg = $state.raw(getDefaultConfig());
 
   fetchBrowserStorage(["blacklists", "configs"]).then((r) => {
-    if (r.blacklists) blacklists = r.blacklists;
+    if (r.blacklists) zap.blacklists = r.blacklists;
     if (r.configs) cfg = getConfig(r.configs);
   });
 
   onStorageChange((changes) => {
     if (changes.blacklists) {
-      blacklists = changes.blacklists.newValue;
-      popupHighlights = [];
+      zap.blacklists = changes.blacklists.newValue;
+      zap.popupHighlights = [];
     }
 
     if (changes.configs) {
       cfg = getConfig(changes.configs.newValue);
     }
   });
-
-  let dragging = $state(false);
-  let dragX = $state(0);
-  let dragY = $state(0);
-  let startDragX = $state(0);
-  let startDragY = $state(0);
-  let endDragX = $state(0);
-  let endDragY = $state(0);
-
-  let zapHighlight = $state<DOMRect>(new DOMRect());
-  let highlights = $state<DOMRect[]>([]);
-  let popupHighlights = $state<DOMRect[]>([]);
-
-  let pickedElement: HTMLElement | undefined;
-  let hoveredInBlacklist = $state(false);
-  let matchedElems: NodeListOf<Element> | undefined;
-
-  function setDragPosition(x: number, y: number) {
-    dragX = x;
-    dragY = y;
-  }
-
-  function resetDragPosition(x: number, y: number) {
-    setDragPosition(x, y);
-    startDragX = x;
-    startDragY = y;
-    endDragX = x;
-    endDragY = y;
-  }
-
-  function startDrag(this: HTMLElement, ev: PointerEvent) {
-    if (ev.target !== this || ev.button !== 0) return;
-    dragging = true;
-    startDragX = ev.pageX;
-    startDragY = ev.pageY;
-    handleDrag(ev);
-  }
-
-  function handleDrag(ev: PointerEvent) {
-    if (dragging) {
-      setDragPosition(
-        endDragX + ev.pageX - startDragX,
-        endDragY + ev.pageY - startDragY,
-      );
-    }
-  }
-
-  function stopDrag() {
-    dragging = false;
-    endDragX = dragX;
-    endDragY = dragY;
-  }
-
-  function setZapMode(value: boolean) {
-    inZapMode = value;
-    if (!inZapMode) {
-      closeEditor();
-    }
-  }
-
-  function getHoveredElement(this: HTMLElement, ev: MouseEvent) {
-    this.style.pointerEvents = "none";
-    const el = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement;
-    this.style.pointerEvents = "auto";
-
-    hoveredInBlacklist = blacklist.some((s) => {
-      const matches = document.querySelectorAll(s);
-      return [...matches].includes(el);
-    });
-
-    return el;
-  }
-
-  function zapElement(this: HTMLElement, ev: MouseEvent) {
-    if (pickedElement) return;
-    pickedElement = getHoveredElement.call(this, ev);
-    if (!pickedElement) return;
-    tweakSpecificity();
-    showEditor = true;
-
-    const rect = pickedElement.getBoundingClientRect();
-    let x =
-      rect.x + 350 > window.innerWidth
-        ? rect.x - Math.abs(350 - rect.width)
-        : rect.x;
-    let y =
-      rect.bottom + 250 > window.innerHeight
-        ? rect.y - 250
-        : rect.y + rect.height;
-
-    if (
-      x < 0 ||
-      x + 350 >= window.innerWidth ||
-      y < 0 ||
-      y + 250 >= window.innerHeight
-    ) {
-      x = (window.innerWidth - 350) / 2;
-      y = (window.innerHeight - 250) / 2;
-    }
-
-    resetDragPosition(x, y);
-  }
-
-  function onScroll() {
-    if (pickedElement) zapHighlight = pickedElement.getBoundingClientRect();
-    if (!matchedElems) return;
-    for (let i = 0; i < matchedElems.length; i++) {
-      highlights[i] = matchedElems[i].getBoundingClientRect();
-    }
-  }
-
-  function highlightElems() {
-    removeHighlightedElems();
-
-    try {
-      matchedElems = document.querySelectorAll(selectorValue);
-      matchCount = matchedElems.length;
-      highlights = [...matchedElems].map((el) => el.getBoundingClientRect());
-    } catch (e) {
-      matchCount = 0;
-    }
-  }
-
-  function removeHighlightedElems() {
-    highlights = [];
-    matchedElems = undefined;
-  }
-
-  function highlightZapElement(this: HTMLElement, ev: MouseEvent) {
-    if (pickedElement) return;
-    const hovered = getHoveredElement.call(this, ev);
-    if (!hovered) return;
-
-    zapHighlight = hovered.getBoundingClientRect();
-    selectedText = [hovered.tagName.toLowerCase(), ...hovered.classList].join(
-      ".",
-    );
-  }
-
-  async function addToBlacklist(ev: SubmitEvent) {
-    ev.preventDefault();
-    blacklists = (await fetchBrowserStorage("blacklists")).blacklists;
-    blacklist = getBlacklist(blacklists);
-
-    if (!blacklist.includes(selectorValue)) {
-      blacklist.push(selectorValue);
-      await setBrowserStorage({ blacklists });
-    }
-  }
-
-  async function removeFromBlacklist(ev: MouseEvent) {
-    ev.preventDefault();
-    blacklists = (await fetchBrowserStorage("blacklists")).blacklists;
-    blacklist = getBlacklist(blacklists);
-
-    const idx = blacklist.indexOf(selectorValue);
-    if (idx !== -1) {
-      blacklist.splice(idx, 1);
-      await setBrowserStorage({ blacklists });
-    }
-  }
-
-  function tweakSpecificity() {
-    if (!pickedElement) return;
-    const v = specificityValue;
-
-    let selector = "";
-
-    if (v === 0) {
-      selector = pickedElement.tagName.toLowerCase();
-    } else if (v === 1) {
-      const tagName = pickedElement.tagName.toLowerCase();
-      const id = pickedElement.id;
-      const classes = Array.from(pickedElement.classList);
-
-      if (id) {
-        selector = `${tagName}#${escapeCSS(id)}`;
-      } else if (classes.length > 0) {
-        selector = `${tagName}.${escapeCSS(classes[0])}`;
-      } else {
-        selector = tagName;
-      }
-    } else if (v === 2) {
-      const tagName = pickedElement.tagName.toLowerCase();
-      const id = pickedElement.id;
-      const classes = Array.from(pickedElement.classList);
-
-      if (id) {
-        selector = `${tagName}#${escapeCSS(id)}`;
-      } else if (classes.length > 0) {
-        const classStr = classes.map((cls) => `.${escapeCSS(cls)}`).join("");
-        selector = `${tagName}${classStr}`;
-      } else {
-        selector = tagName;
-      }
-    } else if (v === 3) {
-      const tagName = pickedElement.tagName.toLowerCase();
-      const id = pickedElement.id;
-      const uniqueClasses = getUniqueClasses(pickedElement);
-      const uniqueAttrs = getUniqueAttributes(pickedElement);
-
-      let parts = [tagName];
-
-      if (id) {
-        parts.push(`#${escapeCSS(id)}`);
-      } else {
-        if (uniqueClasses.length > 0) {
-          parts.push(...uniqueClasses.map((cls) => `.${escapeCSS(cls)}`));
-        }
-        if (uniqueAttrs.length > 0) {
-          const attrStr = uniqueAttrs
-            .slice(0, 1)
-            .map(
-              (attr) => `[${escapeCSS(attr.name)}="${escapeCSS(attr.value)}"]`,
-            )
-            .join("");
-          parts.push(attrStr);
-        }
-      }
-
-      selector = parts.join("");
-    } else if (v === 4) {
-      const tagName = pickedElement.tagName.toLowerCase();
-      const id = pickedElement.id;
-      const uniqueClasses = getUniqueClasses(pickedElement);
-
-      let baseSelector = tagName;
-      if (id) {
-        baseSelector = `${tagName}#${escapeCSS(id)}`;
-      } else if (uniqueClasses.length > 0) {
-        baseSelector = `${tagName}.${escapeCSS(uniqueClasses[0])}`;
-      }
-
-      selector = `${baseSelector}${getNthChild(pickedElement)}`;
-    } else if (v === 5) {
-      const tagName = pickedElement.tagName.toLowerCase();
-      const id = pickedElement.id;
-      const parent = pickedElement.parentElement;
-
-      let childSelector = tagName;
-      if (id) {
-        childSelector = `${tagName}#${escapeCSS(id)}`;
-      } else {
-        const uniqueClasses = getUniqueClasses(pickedElement);
-        if (uniqueClasses.length > 0) {
-          childSelector = `${tagName}.${escapeCSS(uniqueClasses[0])}`;
-        }
-      }
-
-      if (parent) {
-        const parentTag = parent.tagName.toLowerCase();
-        const parentId = parent.id;
-        const parentClasses = Array.from(parent.classList);
-
-        let parentSelector = parentTag;
-        if (parentId) {
-          parentSelector = `${parentTag}#${escapeCSS(parentId)}`;
-        } else if (parentClasses.length > 0) {
-          parentSelector = `${parentTag}.${escapeCSS(parentClasses[0])}`;
-        }
-
-        selector = `${parentSelector} > ${childSelector}`;
-      } else {
-        selector = childSelector;
-      }
-    } else if (v === 6) {
-      const tagName = pickedElement.tagName.toLowerCase();
-      const id = pickedElement.id;
-      const parent = pickedElement.parentElement;
-
-      let childSelector = tagName;
-      if (id) {
-        childSelector = `${tagName}#${escapeCSS(id)}`;
-      } else {
-        const uniqueClasses = getUniqueClasses(pickedElement);
-        if (uniqueClasses.length > 0) {
-          childSelector = `${tagName}.${escapeCSS(uniqueClasses[0])}`;
-        } else {
-          childSelector = `${tagName}${getNthChild(pickedElement)}`;
-        }
-      }
-
-      if (parent) {
-        const parentTag = parent.tagName.toLowerCase();
-        const parentId = parent.id;
-
-        let parentSelector = parentTag;
-        if (parentId) {
-          parentSelector = `${parentTag}#${escapeCSS(parentId)}`;
-        }
-
-        selector = `${parentSelector} > ${childSelector}`;
-      } else {
-        selector = childSelector;
-      }
-    } else if (v === 7) {
-      const path = getElementPath(pickedElement);
-      const pathLength = Math.min(path.length, 2);
-
-      const selectorParts: string[] = [];
-
-      for (
-        let i = Math.max(0, path.length - pathLength);
-        i < path.length;
-        i++
-      ) {
-        const element = path[i];
-        const tagName = element.tagName.toLowerCase();
-        const id = element.id;
-        const classes = Array.from(element.classList);
-
-        let part = tagName;
-        if (id) {
-          part = `${tagName}#${escapeCSS(id)}`;
-        } else if (classes.length > 0) {
-          part = `${tagName}.${escapeCSS(classes[0])}`;
-        }
-
-        selectorParts.push(part);
-      }
-
-      selector = selectorParts.join(" > ");
-    } else if (v === 8) {
-      const path = getElementPath(pickedElement);
-      const pathLength = Math.min(path.length, 3);
-
-      const selectorParts: string[] = [];
-
-      for (
-        let i = Math.max(0, path.length - pathLength);
-        i < path.length;
-        i++
-      ) {
-        const element = path[i];
-        const tagName = element.tagName.toLowerCase();
-        const id = element.id;
-        const classes = Array.from(element.classList);
-
-        let part = tagName;
-        if (id) {
-          part = `${tagName}#${escapeCSS(id)}`;
-        } else if (classes.length > 0) {
-          const classStr = classes
-            .slice(0, 2)
-            .map((cls) => `.${escapeCSS(cls)}`)
-            .join("");
-          part = `${tagName}${classStr}`;
-        }
-
-        if (i === path.length - 1 && !id) {
-          part += getNthChild(element);
-        }
-
-        selectorParts.push(part);
-      }
-
-      selector = selectorParts.join(" > ");
-    } else {
-      const path = getElementPath(pickedElement);
-      const selectorParts: string[] = [];
-
-      path.forEach((element) => {
-        const tagName = element.tagName.toLowerCase();
-        const id = element.id;
-        const classes = Array.from(element.classList);
-        const attrs = getUniqueAttributes(element);
-
-        let part = tagName;
-
-        if (id) {
-          part = `${tagName}#${escapeCSS(id)}`;
-        } else {
-          if (classes.length > 0) {
-            const classStr = classes
-              .map((cls) => `.${escapeCSS(cls)}`)
-              .join("");
-            part = `${tagName}${classStr}`;
-          }
-
-          if (attrs.length > 0) {
-            const attrStr = attrs
-              .slice(0, 1)
-              .map(
-                (attr) =>
-                  `[${escapeCSS(attr.name)}="${escapeCSS(attr.value)}"]`,
-              )
-              .join("");
-            part += attrStr;
-          }
-
-          part += getNthChild(element);
-          part += getNthOfType(element);
-        }
-
-        selectorParts.push(part);
-      });
-
-      selector = selectorParts.join(" > ");
-    }
-
-    if (!selector) {
-      selector = pickedElement.tagName.toLowerCase();
-    }
-
-    try {
-      const matches = document.querySelectorAll(selector);
-      if (!Array.from(matches).includes(pickedElement)) {
-        selector =
-          pickedElement.tagName.toLowerCase() + getNthChild(pickedElement);
-      }
-    } catch (e) {
-      selector = pickedElement.tagName.toLowerCase();
-    }
-
-    selectorValue = selector;
-    highlightElems();
-  }
-
-  function closeEditor() {
-    specificityValue = 8;
-    pickedElement = undefined;
-    showEditor = false;
-    removeHighlightedElems();
-  }
-
-  function exitZapMode(ev: KeyboardEvent) {
-    if (ev.key !== "Escape") return;
-    if (pickedElement) return closeEditor();
-    setZapMode(false);
-  }
 
   const darkModeStyle = document.createElement("style");
   darkModeStyle.dataset.darkMode = "";
@@ -496,7 +430,7 @@
     const blacklistSelectors = [
       ...(cfg.css.preserveImages ? ["img", "picture", "video", "iframe"] : []),
       `#${shadowId}`,
-      ...blacklist,
+      ...zap.blacklist,
     ].join(", ");
 
     darkModeStyle.innerHTML = `
@@ -528,28 +462,27 @@
       if (message.event === "toggleDarkMode") {
         toggleDarkMode(await toggleSite(urlID));
       } else if (message.event === "toggleZapMode") {
-        setZapMode(!inZapMode);
+        zap.setZapMode(!zap.inZapMode);
       } else if (message.event === "getZapMode") {
-        return inZapMode;
+        return zap.inZapMode;
       } else if (message.event === "blacklistUpdate") {
         const { sites } = await fetchBrowserStorage("sites");
         await toggleDarkMode(sites.includes(urlID));
-        closeEditor();
       } else if (message.event === "highlightSelector") {
         if (!message.selector) {
-          popupHighlights = [];
+          zap.popupHighlights = [];
           return;
         }
 
         const elems = document.body.querySelectorAll(
           message.selector,
-        ) as NodeListOf<HTMLElement>;
+        ) as NodeListOf<Element>;
 
-        popupHighlights = elems
+        zap.popupHighlights = elems
           ? [...elems].map((el) => el.getBoundingClientRect())
           : [];
       } else if (message.event === "popupClose") {
-        popupHighlights = [];
+        zap.popupHighlights = [];
       }
     });
 
@@ -562,7 +495,7 @@
 
   const hlClasses = "fixed outline outline-solid outline-2 pointer-events-none";
   const hlColor = $derived(
-    hoveredInBlacklist
+    zap.hoveredInBlacklist
       ? "bg-red-400/50 outline-red-400"
       : "bg-blue-400/50 outline-blue-400",
   );
@@ -571,91 +504,50 @@
 </script>
 
 <svelte:window
-  onkeydown={exitZapMode}
-  onscroll={onScroll}
-  onpointermove={handleDrag}
-  onpointerup={stopDrag}
+  onkeydown={(ev) => zap.exitZapMode(ev)}
+  onscroll={() => zap.onScroll()}
+  onpointermove={(ev) => zap.handleDrag(ev)}
+  onpointerup={() => zap.stopDrag()}
 />
 
-{#if inZapMode}
+{#if zap.inZapMode}
   <div
     class="fixed inset-0 bg-black/30 border-4 border-dashed border-white p-4 cursor-crosshair z-[2147483647] pointer-events-auto w-dvw h-dvh"
-    onpointerdown={zapElement}
-    onpointermove={highlightZapElement}
+    onpointerdown={(ev) => zap.zapElement(ev.currentTarget, ev)}
+    onpointermove={(ev) => zap.highlightZapElement(ev.currentTarget, ev)}
   >
     <em class="p-1 text-white"
       >Press <strong>Escape</strong> to exit zap mode.</em
     >
 
-    <div class="{hlClasses} z-2 {hlColor}" style={hlStyle(zapHighlight)}>
+    <div class="{hlClasses} z-2 {hlColor}" style={hlStyle(zap.zapHighlight)}>
       <strong
         class="absolute top-full left-0 text-white bg-black bg-opacity-75 px-1 text-sm truncate text-ellipsis max-w-full"
       >
-        {hoveredInBlacklist ? "🚫 " : ""}
-        {selectedText}
+        {zap.hoveredInBlacklist ? "🚫 " : ""}
+        {zap.selectedText}
       </strong>
 
-      {#if showEditor}
-        <form
-          class="fixed bg-zinc-800 text-zinc-200 p-4 w-[350px] border border-zinc-600 rounded-lg pointer-events-auto flex flex-col gap-2 cursor-grab"
-          class:cursor-grabbing={dragging}
-          style="left: {dragX}px; top: {dragY}px;"
-          onsubmit={addToBlacklist}
-          onpointerdown={startDrag}
-        >
-          <button
-            type="button"
-            class="danger self-end compact h-6 w-6"
-            onclick={closeEditor}
-          >
-            ×
-          </button>
-
-          <div class="flex items-center gap-2">
-            <input
-              class="flex-1 bg-zinc-700"
-              type="range"
-              min={0}
-              max={9}
-              bind:value={specificityValue}
-              oninput={tweakSpecificity}
-            />
-            <span class="text-sm"><strong>{matchCount}</strong> matches</span>
-          </div>
-
-          <textarea
-            class="bg-zinc-700 text-zinc-200 p-2 rounded border border-zinc-600 resize-y font-mono text-sm"
-            rows="5"
-            bind:value={selectorValue}
-            oninput={highlightElems}
-          ></textarea>
-
-          <button type="submit" disabled={selectorInBlacklist} class="primary">
-            <span class="text-bg bg-white">
-              {selectorInBlacklist
-                ? "🚫 Already In Blacklist"
-                : "Add To Blacklist"}
-            </span>
-          </button>
-
-          {#if selectorInBlacklist}
-            <button type="button" onclick={removeFromBlacklist} class="danger">
-              Remove
-            </button>
-          {/if}
-        </form>
+      {#if zap.showEditor && zap.pickedElement}
+        <EditorBox />
       {/if}
     </div>
-    {#each highlights as hl}
+    {#each zap.highlights as hl}
       <div
         class="{hlClasses} bg-yellow-400/50 outline-yellow-400 z-1"
         style={hlStyle(hl)}
       ></div>
     {/each}
+    {#if zap.inspectorHighlight}
+      <div
+        class="{hlClasses} bg-purple-400/50 outline-purple-400 z-1"
+        style={hlStyle(zap.inspectorHighlight)}
+      ></div>
+    {/if}
   </div>
 {/if}
 
-{#each popupHighlights as hl}
+{#each zap.popupHighlights as hl}
   <div
     class="{hlClasses} bg-lime-400/50 outline-lime-400 z-3"
     style={hlStyle(hl)}
