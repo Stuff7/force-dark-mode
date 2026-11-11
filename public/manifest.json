@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Dark Mode",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "Invert site colors.",
   "permissions": ["storage", "<all_urls>"],
   "background": {
@@ -11,7 +11,8 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["./content.js"]
+      "js": ["./content.js"],
+      "run_at": "document_start"
     }
   ],
   "commands": {

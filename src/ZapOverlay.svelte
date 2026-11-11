@@ -384,6 +384,8 @@
 <script lang="ts">
   import EditorBox from "./EditorBox.svelte";
   import {
+    buildDarkModeCSS,
+    createDarkModeStyleElement,
     getConfig,
     getDefaultConfig,
     onBrowserMessage,
@@ -412,47 +414,21 @@
     }
   });
 
-  const darkModeStyle = document.createElement("style");
-  darkModeStyle.dataset.darkMode = "";
-  darkModeStyle.setAttribute("type", "text/css");
+  const darkModeStyle = createDarkModeStyleElement();
 
-  async function toggleDarkMode(enabled: boolean) {
+  function toggleDarkMode(enabled: boolean) {
     if (enabled) {
-      document.head.appendChild(darkModeStyle);
+      document.documentElement.appendChild(darkModeStyle);
     } else {
       darkModeStyle.remove();
     }
   }
 
   $effect(() => {
-    const css = cfg.css;
-
-    const blacklistSelectors = [
-      ...(cfg.css.preserveImages ? ["img", "picture", "video", "iframe"] : []),
+    darkModeStyle.innerHTML = buildDarkModeCSS(cfg, [
       `#${shadowId}`,
       ...zap.blacklist,
-    ].join(", ");
-
-    darkModeStyle.innerHTML = `
-        html {
-          filter:
-            invert(${css.invert}%)
-            brightness(${css.brightness}%)
-            contrast(${css.contrast}%)
-            hue-rotate(${css.hueRotate}deg)
-            saturate(${css.saturation}%)
-          !important;
-        }
-
-        ${blacklistSelectors} {
-          filter:
-            invert(${css.invert}%)
-            contrast(${(100 / css.contrast) * 100}%)
-            saturate(${(100 / css.saturation) * 100}%)
-            hue-rotate(${-css.hueRotate}deg)
-          !important;
-        }
-      `;
+    ]);
   });
 
   (async () => {
@@ -485,12 +461,6 @@
         zap.popupHighlights = [];
       }
     });
-
-    if (
-      (await fetchBrowserStorage("sites")).sites.some((host) => host === urlID)
-    ) {
-      toggleDarkMode(true);
-    }
   })();
 
   const hlClasses = "fixed outline outline-solid outline-2 pointer-events-none";

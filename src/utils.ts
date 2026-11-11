@@ -132,6 +132,59 @@ export function getDefaultConfig() {
   return getInvertConfigPreset();
 }
 
+export function buildDarkModeCSS(
+  config: Config,
+  excludeSelectors: string[] = [],
+) {
+  const {
+    invert,
+    brightness,
+    contrast,
+    hueRotate,
+    saturation,
+    preserveImages,
+  } = config.css;
+
+  const blacklistSelectors = [
+    ...(preserveImages ? ["img", "picture", "video", "iframe"] : []),
+    ...excludeSelectors,
+  ].join(", ");
+
+  return `
+    html {
+      filter:
+        invert(${invert}%)
+        brightness(${brightness}%)
+        contrast(${contrast}%)
+        hue-rotate(${hueRotate}deg)
+        saturate(${saturation}%)
+      !important;
+    }
+
+    ${blacklistSelectors} {
+      filter:
+        invert(${invert}%)
+        contrast(${(100 / contrast) * 100}%)
+        saturate(${(100 / saturation) * 100}%)
+        hue-rotate(${-hueRotate}deg)
+      !important;
+    }
+  `;
+}
+
+export function createDarkModeStyleElement(): HTMLStyleElement {
+  const existing = document.getElementById(
+    "dark-mode-style",
+  ) as HTMLStyleElement | null;
+  if (existing) return existing;
+
+  const style = document.createElement("style");
+  style.id = "dark-mode-style";
+  style.dataset.darkMode = "";
+  style.setAttribute("type", "text/css");
+  return style;
+}
+
 export function getConfig(
   configs: Storage["configs"],
   host = urlToID(location),

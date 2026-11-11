@@ -3,6 +3,10 @@
   import { zap } from "./ZapOverlay.svelte";
   import { elementMatchesQuery, getElementPath } from "./utils";
 
+  function strictAncestors(el: Element): Element[] {
+    return getElementPath(el).slice(0, -1);
+  }
+
   export class InspectorState {
     root: Element;
 
@@ -12,7 +16,9 @@
     matchList = $state<Element[]>([]);
     activeMatchIndex = $state(0);
     clickedElement = $state<Element>();
-    activeMatch = $derived(this.matchList[this.activeMatchIndex] ?? this.clickedElement);
+    activeMatch = $derived(
+      this.matchList[this.activeMatchIndex] ?? this.clickedElement,
+    );
 
     private rows = new Map<Element, Element>();
 
@@ -30,7 +36,7 @@
 
     expandAncestors(el: Element) {
       const next = new Set(this.expanded);
-      for (const ancestor of getElementPath(el)) {
+      for (const ancestor of strictAncestors(el)) {
         next.add(ancestor);
       }
       this.expanded = next;
@@ -106,11 +112,6 @@
     untrack(() => {
       const next = new Set(inspector.expanded);
       next.add(root);
-      if (zap.pickedElement) {
-        for (const ancestor of getElementPath(zap.pickedElement)) {
-          next.add(ancestor);
-        }
-      }
       inspector.expanded = next;
 
       if (zap.pickedElement) inspector.focusElement(zap.pickedElement);

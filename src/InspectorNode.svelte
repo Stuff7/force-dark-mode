@@ -43,7 +43,12 @@
     class:outline-amber-400={isActiveMatch}
     class:text-red-300={isBlacklisted && !isPicked}
     style="padding-left: {depth * 12 + 2}px"
-    onclick={() => inspector.click(element)}
+    title="Select this node"
+    onclick={(ev) => {
+      ev.stopPropagation();
+      inspector.click(element);
+      zap.pickElement(element);
+    }}
     ondblclick={() => inspector.toggle(element)}
     onpointerenter={() => zap.hoverInspectorElement(element)}
     onpointerleave={() => zap.hoverInspectorElement(undefined)}
@@ -51,6 +56,7 @@
       if (ev.key === "Enter" || ev.key === " ") {
         ev.preventDefault();
         inspector.click(element);
+        zap.pickElement(element);
       }
     }}
     {@attach (node) => {
@@ -72,18 +78,6 @@
     {:else}
       <span class="w-3 shrink-0"></span>
     {/if}
-
-    <button
-      type="button"
-      class="compact shrink-0 text-zinc-400 hover:text-zinc-200"
-      title="Select this node"
-      onclick={(ev) => {
-        ev.stopPropagation();
-        zap.pickElement(element);
-      }}
-    >
-      📋
-    </button>
 
     {#if isBlacklisted}
       <button

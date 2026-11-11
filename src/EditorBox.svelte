@@ -50,12 +50,6 @@
       oninput={() => zap.highlightElems()}
     ></textarea>
 
-    <button type="submit" disabled={zap.selectorInBlacklist} class="primary">
-      <span class="text-bg bg-white">
-        {zap.selectorInBlacklist ? "🚫 Already In Blacklist" : "Add To Blacklist"}
-      </span>
-    </button>
-
     {#if zap.selectorInBlacklist}
       <button
         type="button"
@@ -63,6 +57,10 @@
         class="danger"
       >
         Remove
+      </button>
+    {:else}
+      <button type="submit" class="primary">
+        <span class="text-bg bg-white">Add To Blacklist</span>
       </button>
     {/if}
   </div>
